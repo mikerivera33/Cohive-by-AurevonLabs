@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Cohive</string>
+    <string name="title_activity_main">Cohive</string>
+    <string name="package_name">com.aurevonlabs.cohive</string>
+    <string name="custom_url_scheme">com.aurevonlabs.cohive</string>
+</resources>

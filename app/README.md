@@ -36,14 +36,24 @@ Two query params help when demoing:
 
 ## Native builds
 
+The `ios/` and `android/` Capacitor projects are committed, with app icons and
+splash screens (the Cohive hexagon on navy) already generated into both via
+`npx capacitor-assets generate --ios --android` from `assets/`.
+
 ```bash
-npx cap add ios       # or: android
-npm run ios           # build + sync + open Xcode
-npm run android
+npm run sync          # rebuild web assets + copy into both native shells
+
+# Android — needs the Android SDK (set ANDROID_HOME):
+cd android && ./gradlew assembleDebug     # or open in Android Studio
+
+# iOS — needs a Mac with Xcode + CocoaPods:
+cd ios/App && pod install && open App.xcworkspace
 ```
 
 `capacitor.config.ts` sets the app id (`com.aurevonlabs.cohive`), the dark navy launch
-background and an overlaying status bar so the app paints edge to edge.
+background and an overlaying status bar so the app paints edge to edge. The synced
+`public/` folders inside the native shells are build outputs and stay untracked —
+run `npm run sync` after cloning.
 
 ## Layout
 
