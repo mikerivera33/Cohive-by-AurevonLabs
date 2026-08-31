@@ -348,6 +348,146 @@ await check('skip returns to the app on the tab you left', async () => {
   await has('hives are buzzing');
 });
 
+console.log('\ndeep flows');
+await check('scan results survive switching sub-views', async () => {
+  await page.getByRole('button', { name: /Trip/ }).last().click();
+  await page.waitForTimeout(300);
+  await tap('Map');
+  await page.waitForTimeout(400);
+  await tap('Sample');
+  await tap('Scan & detect');
+  await page.waitForTimeout(1600);
+  await has('Detected via');
+  await tap('Spots');
+  await page.waitForTimeout(300);
+  await tap('Map');
+  await page.waitForTimeout(400);
+  await has('Detected via');
+  await has('Nezu Museum');
+});
+await check('tapping the active tier un-votes it', async () => {
+  await tap('Spots');
+  await page.waitForTimeout(300);
+  const btn = page.getByRole('button', { name: 'Maybe', exact: true }).first();
+  await btn.click();
+  await page.waitForTimeout(250);
+  if ((await btn.getAttribute('aria-pressed')) !== 'true') throw new Error('tier did not set');
+  await btn.click();
+  await page.waitForTimeout(250);
+  if ((await btn.getAttribute('aria-pressed')) !== 'false') throw new Error('tier did not clear');
+});
+await check('category filter survives leaving and re-entering the tab', async () => {
+  await page.getByRole('button', { name: 'Food', exact: true }).first().click();
+  await page.waitForTimeout(250);
+  await page.getByRole('button', { name: /Nest/ }).last().click();
+  await page.waitForTimeout(400);
+  await page.getByRole('button', { name: /Trip/ }).last().click();
+  await page.waitForTimeout(400);
+  const food = page.getByRole('button', { name: 'Food', exact: true }).first();
+  if ((await food.getAttribute('aria-pressed')) !== 'true') throw new Error('filter reset on tab switch');
+  await page.getByRole('button', { name: 'All', exact: true }).first().click();
+  await page.waitForTimeout(200);
+});
+await check('table mood filter survives a tab switch', async () => {
+  await page.getByRole('button', { name: /Table/ }).last().click();
+  await page.waitForTimeout(400);
+  await page.getByRole('button', { name: 'Cozy', exact: true }).click();
+  await page.waitForTimeout(250);
+  await page.getByRole('button', { name: /Hive/ }).last().click();
+  await page.waitForTimeout(400);
+  await page.getByRole('button', { name: /Table/ }).last().click();
+  await page.waitForTimeout(400);
+  const cozy = page.getByRole('button', { name: 'Cozy', exact: true });
+  if ((await cozy.getAttribute('aria-pressed')) !== 'true') throw new Error('mood filter reset');
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await page.waitForTimeout(200);
+});
+await check('"+ Trip day" links a restaurant', async () => {
+  await page.getByRole('button', { name: '+ Trip day' }).first().click();
+  await page.waitForTimeout(300);
+  await has('linked to your next open trip day');
+});
+await check('regenerating with fewer days honours the day count', async () => {
+  await page.getByRole('button', { name: /Trip/ }).last().click();
+  await page.waitForTimeout(300);
+  await tap('Plan');
+  await page.waitForTimeout(300);
+  await page.getByLabel('Days').fill('2');
+  // The persistence check reloaded the page, so the in-memory plan is gone
+  // and the button reads "Generate" again — match either label.
+  await page.getByRole('button', { name: /itinerary$/i }).click();
+  await page.waitForTimeout(3600);
+  await has('DAY 2');
+  if (await page.getByText('DAY 3', { exact: true }).count()) throw new Error('DAY 3 rendered for a 2-day plan');
+  await has('Didn’t fit:');
+});
+await check('.ics export downloads a calendar file', async () => {
+  const [dl] = await Promise.all([
+    page.waitForEvent('download', { timeout: 8000 }),
+    page.getByRole('button', { name: 'Calendar .ics' }).click(),
+  ]);
+  if (dl.suggestedFilename() !== 'cohive-tokyo.ics') throw new Error('filename: ' + dl.suggestedFilename());
+  await page.waitForTimeout(300);
+  await has('Calendar file downloaded');
+});
+await check('copy-as-text puts the itinerary on the clipboard', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
+  await page.getByRole('button', { name: 'Copy as text' }).click();
+  await page.waitForTimeout(400);
+  await has('Copied to clipboard');
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  if (!clip.includes('Tokyo Adventure — Cohive itinerary')) throw new Error('clipboard: ' + clip.slice(0, 60));
+  if (!clip.includes('Day 2')) throw new Error('clipboard missing Day 2');
+});
+await check('empty expense is rejected with a toast', async () => {
+  await tap('Budget');
+  await page.waitForTimeout(300);
+  await tap('Add expense');
+  await page.waitForTimeout(250);
+  await has('Add a label and amount');
+});
+let savedCode = '';
+await check('Platinum keeps the referral code generated earlier', async () => {
+  await page.getByRole('button', { name: /You/ }).last().click();
+  await page.waitForTimeout(400);
+  savedCode = await page.getByText(/^MIKE-[A-Z0-9]{4}10$/).innerText();
+  await page.getByRole('button', { name: 'See Cohive+ plans' }).click();
+  await page.waitForTimeout(500);
+  await page.getByRole('button', { name: 'Own it' }).click();
+  await page.waitForTimeout(600);
+  await has('Platinum active');
+  await has('Lifetime access');
+  const code = await page.getByText(/^MIKE-[A-Z0-9]{4}10$/).innerText();
+  if (code !== savedCode) throw new Error(`code changed: ${savedCode} -> ${code}`);
+});
+await check('downgrading to Free re-locks connections and hides the code', async () => {
+  await page.getByRole('button', { name: 'See Cohive+ plans' }).click();
+  await page.waitForTimeout(500);
+  await page.getByRole('button', { name: 'Current plan' }).click();
+  await page.waitForTimeout(600);
+  await has('You’re on Free');
+  await has('Free plan');
+  const locked = await page.getByRole('button', { name: /Cohive\+/ }).count();
+  if (locked < 21) throw new Error('expected 21 locked rows, got ' + locked);
+  await has('Every paid plan includes a permanent referral code');
+});
+await check('re-purchasing restores the same permanent code', async () => {
+  await page.getByRole('button', { name: 'See Cohive+ plans' }).first().click();
+  await page.waitForTimeout(500);
+  await page.getByRole('button', { name: 'Start monthly' }).click();
+  await page.waitForTimeout(600);
+  const code = await page.getByText(/^MIKE-[A-Z0-9]{4}10$/).innerText();
+  if (code !== savedCode) throw new Error(`code not permanent: ${savedCode} -> ${code}`);
+});
+await check('tapping the scrim closes the pricing sheet', async () => {
+  await page.getByRole('button', { name: 'See Cohive+ plans' }).click();
+  await page.waitForTimeout(500);
+  await has('Honest pricing');
+  await page.getByRole('button', { name: 'Close plans' }).click({ position: { x: 215, y: 30 } });
+  await page.waitForTimeout(500);
+  if (await page.getByText('Honest pricing').count()) throw new Error('sheet did not close');
+});
+
 console.log('\ndesktop device frame');
 await check('wide viewport renders the iOS bezel', async () => {
   await page.setViewportSize({ width: 1280, height: 1000 });

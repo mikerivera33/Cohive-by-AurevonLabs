@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { MapView } from '../components/MapView';
 import type { MapMarker } from '../components/MapView';
@@ -17,8 +17,8 @@ const TIER_META: Record<Tier, [string, string]> = {
 };
 
 export function TableTab() {
-  const { table, light, say, openPricing, bookingUnlocked } = useApp();
-  const [filter, setFilter] = useState('All');
+  const { table, light, say, openPricing, bookingUnlocked, tableFilter: filter, setTableFilter: setFilter } =
+    useApp();
 
   const markers = useMemo<MapMarker[]>(
     () => table.map((t) => ({ lat: t.lat, lng: t.lng, color: '#F472B6', label: t.name })),

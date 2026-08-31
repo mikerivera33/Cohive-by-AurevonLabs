@@ -9,7 +9,7 @@ import {
 } from 'react';
 import type { ReactNode } from 'react';
 
-import { planTrip } from '../engine/engine';
+import { planTrip, scanImport } from '../engine/engine';
 import * as seed from '../engine/seed';
 import { fireConfetti } from '../lib/confetti';
 import { load, save } from '../lib/storage';
@@ -21,8 +21,10 @@ import type {
   Pace,
   PlanTier,
   ReactionEmoji,
+  Category,
   Restaurant,
   ScanCandidate,
+  ScanResult,
   Spot,
   TabId,
   Tier,
@@ -45,6 +47,9 @@ const BUILD_STAGES = [
 ];
 
 const STAGE_MS = 520;
+
+/** How long the scanner spends "reading" before resolving. */
+const SCAN_MS = 1100;
 
 interface AppStore {
   /* appearance */
@@ -78,6 +83,25 @@ interface AppStore {
   addExpense: (label: string, amount: number) => void;
   addMember: (name: string) => void;
   toggleReaction: (listingId: number, emoji: ReactionEmoji) => void;
+
+  /* scanner — lives here so results survive switching sub-views */
+  scanText: string;
+  setScanText: (t: string) => void;
+  scanning: boolean;
+  scanResult: ScanResult | null;
+  scan: () => void;
+
+  /* list filters — persist across tab switches, as the design's single state did */
+  catFilter: Category | 'all';
+  setCatFilter: (c: Category | 'all') => void;
+  tableFilter: string;
+  setTableFilter: (f: string) => void;
+
+  /* expense draft — survives an accidental tab flick */
+  expLabel: string;
+  setExpLabel: (v: string) => void;
+  expAmt: string;
+  setExpAmt: (v: string) => void;
 
   /* itinerary */
   planDays: number;
@@ -148,6 +172,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [table] = useState<Restaurant[]>(() => seed.table.map((t) => ({ ...t })));
   const [addedIds, setAddedIds] = useState<string[]>([]);
 
+  /* ── scanner ──────────────────────────────────────────────── */
+  const [scanText, setScanText] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+
+  /* ── filters + drafts ─────────────────────────────────────── */
+  const [catFilter, setCatFilter] = useState<Category | 'all'>('all');
+  const [tableFilter, setTableFilter] = useState('All');
+  const [expLabel, setExpLabel] = useState('');
+  const [expAmt, setExpAmt] = useState('');
+
   /* ── itinerary ────────────────────────────────────────────── */
   const [planDays, setPlanDays] = useState(4);
   const [pace, setPace] = useState<Pace>('balanced');
@@ -170,6 +205,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const nextId = useRef(500);
   const toastTimer = useRef<number | undefined>(undefined);
   const buildTimer = useRef<number | undefined>(undefined);
+  const scanTimer = useRef<number | undefined>(undefined);
 
   // The build runs on a timer, so it needs the spot list as of the moment it
   // finishes rather than the one captured when the button was tapped.
@@ -182,6 +218,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => () => {
       window.clearTimeout(toastTimer.current);
       window.clearTimeout(buildTimer.current);
+      window.clearTimeout(scanTimer.current);
     },
     []
   );
@@ -244,6 +281,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     [say]
   );
+
+  const scan = useCallback(() => {
+    const txt = scanText.trim();
+    if (!txt) {
+      say('Paste a link or caption first');
+      return;
+    }
+    setScanning(true);
+    setScanResult(null);
+    window.clearTimeout(scanTimer.current);
+    scanTimer.current = window.setTimeout(() => {
+      setScanResult(
+        scanImport(txt, {
+          city: seed.trip.city,
+          lat: seed.TOKYO_CENTER[0],
+          lng: seed.TOKYO_CENTER[1],
+        })
+      );
+      setScanning(false);
+    }, SCAN_MS);
+  }, [scanText, say]);
 
   const addExpense = useCallback(
     (label: string, amount: number) => {
@@ -382,6 +440,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addExpense,
       addMember,
       toggleReaction,
+      scanText,
+      setScanText,
+      scanning,
+      scanResult,
+      scan,
+      catFilter,
+      setCatFilter,
+      tableFilter,
+      setTableFilter,
+      expLabel,
+      setExpLabel,
+      expAmt,
+      setExpAmt,
       planDays,
       setPlanDays,
       pace,
@@ -409,6 +480,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       light, onboarded, finishOnboarding, replayOnboarding, tab, tripView,
       spots, expenses, members, activity, nest, table, addedIds,
       setTier, addSpotFromScan, addExpense, addMember, toggleReaction,
+      scanText, scanning, scanResult, scan,
+      catFilter, tableFilter, expLabel, expAmt,
       planDays, pace, plan, building, buildStage, generate,
       planTier, refCode, linked, purchase, toggleLink,
       toast, say, pricingOpen,

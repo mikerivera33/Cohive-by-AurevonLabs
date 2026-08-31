@@ -1,5 +1,3 @@
-import { useState } from 'react';
-
 import { Reveal } from '../../lib/Reveal';
 import { catChip, catColor, catLabel, chipStyle, press } from '../../lib/styles';
 import { useApp } from '../../store/AppStore';
@@ -12,8 +10,7 @@ const TIER_BUTTONS: [Tier, string][] = [
 ];
 
 export function SpotsView() {
-  const { spots, setTier } = useApp();
-  const [catFilter, setCatFilter] = useState<Category | 'all'>('all');
+  const { spots, setTier, catFilter, setCatFilter } = useApp();
 
   const cats: (Category | 'all')[] = ['all', ...new Set(spots.map((s) => s.category))];
   const visible = spots.filter((s) => catFilter === 'all' || s.category === catFilter);

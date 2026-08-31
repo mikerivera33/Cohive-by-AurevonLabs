@@ -70,10 +70,14 @@ match the plan.
 
 ### End to end — `npm run smoke`
 
-46 checks driving a real browser through every flow: onboarding → auth → create hive →
+59 checks driving a real browser through every flow: onboarding → auth → create hive →
 invite → home → trip map → scan and add → tier voting → itinerary generation → budget →
 crew → Nest → Table → pricing → all 21 connections → theme toggle → persistence across a
-reload → replay tour → desktop bezel. Fails on any console error.
+reload → replay tour → desktop bezel — plus deep flows: scanner results and list filters
+surviving navigation, un-voting a tier, regenerating with a different day count, a real
+`.ics` download, clipboard copy verified by reading the clipboard back, expense
+validation, Platinum, downgrade re-locking, and referral-code permanence across
+downgrade/re-purchase. Fails on any console error.
 
 Playwright is not a project dependency, so point at an install:
 

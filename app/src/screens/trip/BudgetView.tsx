@@ -1,5 +1,3 @@
-import { useState } from 'react';
-
 import { Reveal } from '../../lib/Reveal';
 import { press } from '../../lib/styles';
 import { useApp } from '../../store/AppStore';
@@ -7,9 +5,10 @@ import { useApp } from '../../store/AppStore';
 const BOOK_BUTTONS = ['Flights', 'Stays', 'Tables'];
 
 export function BudgetView() {
-  const { trip, expenses, plan, addExpense, say, openPricing, bookingUnlocked } = useApp();
-  const [expLabel, setExpLabel] = useState('');
-  const [expAmt, setExpAmt] = useState('');
+  const {
+    trip, expenses, plan, addExpense, say, openPricing, bookingUnlocked,
+    expLabel, setExpLabel, expAmt, setExpAmt,
+  } = useApp();
 
   const planCost = plan ? plan.totalCost : 0;
   const spent = expenses.reduce((a, e) => a + e.amount, 0) + planCost;

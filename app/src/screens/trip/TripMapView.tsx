@@ -1,28 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 
 import { MapView } from '../../components/MapView';
 import type { MapMarker } from '../../components/MapView';
-import { scanImport } from '../../engine/engine';
-import { TOKYO_CENTER, trip as seedTrip } from '../../engine/seed';
+import { TOKYO_CENTER } from '../../engine/seed';
 import { Reveal } from '../../lib/Reveal';
 import { catChip, catColor, catLabel, press } from '../../lib/styles';
 import { useApp } from '../../store/AppStore';
-import type { ScanResult } from '../../types';
 
 const SAMPLE =
   'day 3 tokyo!! you HAVE to try Afuri Ramen Ebisu, then Nezu Museum is so underrated, sunset at Tokyo Tower 🍜';
 
-/** How long the scanner spends "reading" before resolving. */
-const SCAN_MS = 1100;
-
 export function TripMapView() {
-  const { spots, light, addedIds, addSpotFromScan, say } = useApp();
-  const [importText, setImportText] = useState('');
-  const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  const timer = useRef<number | undefined>(undefined);
-
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const { spots, light, addedIds, addSpotFromScan, scanText, setScanText, scanning, scanResult, scan } =
+    useApp();
 
   const markers = useMemo<MapMarker[]>(
     () => spots.map((s) => ({ lat: s.lat, lng: s.lng, color: catColor(s.category), label: s.name })),
@@ -30,21 +20,6 @@ export function TripMapView() {
   );
 
   const mustCount = spots.filter((s) => s.tier === 'must').length;
-
-  const doScan = () => {
-    const txt = importText.trim();
-    if (!txt) {
-      say('Paste a link or caption first');
-      return;
-    }
-    setScanning(true);
-    setScanResult(null);
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      setScanResult(scanImport(txt, { city: seedTrip.city, lat: TOKYO_CENTER[0], lng: TOKYO_CENTER[1] }));
-      setScanning(false);
-    }, SCAN_MS);
-  };
 
   return (
     <>
@@ -119,8 +94,8 @@ export function TripMapView() {
         </p>
         <textarea
           rows={3}
-          value={importText}
-          onChange={(e) => setImportText(e.target.value)}
+          value={scanText}
+          onChange={(e) => setScanText(e.target.value)}
           placeholder={'“you HAVE to try Afuri Ramen Ebisu…” or https://tiktok.com/…'}
           aria-label="Link or caption to scan"
           style={{ resize: 'none' }}
@@ -128,14 +103,14 @@ export function TripMapView() {
         <div style={{ display: 'flex', gap: 9, marginTop: 11, alignItems: 'center' }}>
           <button
             className="press ctaBtn"
-            onClick={doScan}
+            onClick={scan}
             style={{ ...press(0.96), borderRadius: 12, padding: '12px 20px', fontSize: 12, letterSpacing: '.09em' }}
           >
             Scan &amp; detect
           </button>
           <button
             className="grot"
-            onClick={() => setImportText(SAMPLE)}
+            onClick={() => setScanText(SAMPLE)}
             style={{
               background: 'none',
               border: '1px solid var(--lineB)',
