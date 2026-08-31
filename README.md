@@ -1,25 +1,45 @@
-# CODING AGENTS: READ THIS FIRST
+# Cohive — by AurevonLabs
 
-This is a **handoff bundle** from Claude Design (claude.ai/design).
+**Trips, homes and dinners in one shared hive.** Three product lines under one roof:
 
-A user mocked up designs in HTML/CSS/JS using an AI design tool, then exported this bundle so a coding agent can implement the designs for real.
+- 🐝 **Bucketlist** — trips: live map, universal link scanner, tiered voting
+  (must / maybe / if-time), AI itinerary studio with real clock times, budget
+  tracker, crew
+- 🏠 **Nest** — shared home hunting: mapped listings with 💍/🪴 reactions
+- 🍝 **Table** — the dinner list that survives the group chat
 
-## What you should do — IMPORTANT
+Dark navy + honey amber, dark/light modes, spring motion, scroll-driven reveals.
+iOS-framed on desktop, full-bleed with safe-area insets on a phone,
+Capacitor-ready for the App Store / Play Store.
 
-**Read the chat transcripts first.** There are 3 chat transcript(s) in `chats/`. The transcripts show the full back-and-forth between the user and the design assistant — they tell you **what the user actually wants** and **where they landed** after iterating. Don't skip them. The final HTML files are the output, but the chat is where the intent lives.
+## Run it
 
-**Read `project/Cohive by AurevonLabs.dc.html` in full.** The user had this file open when they triggered the handoff, so it's almost certainly the primary design they want built. Read it top to bottom — don't skim. Then **follow its imports**: open every file it pulls in (shared components, CSS, scripts) so you understand how the pieces fit together before you start implementing.
+```bash
+cd app
+npm install
+npm run dev        # http://localhost:5173
+```
 
-**If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
+Full docs — native builds, tests (36 engine checks + a 59-check browser
+walkthrough), architecture, product rules — live in [`app/README.md`](app/README.md).
 
-## About the design files
+## Repository layout
 
-The design medium is **HTML/CSS/JS** — these are prototypes, not production code. Your job is to **recreate them pixel-perfectly** in whatever technology makes sense for the target codebase (React, Vue, native, whatever fits). Match the visual output; don't copy the prototype's internal structure unless it happens to fit.
+| Path | What it is |
+| --- | --- |
+| [`app/`](app/) | The application — React 18 + TypeScript + Vite + Leaflet, Capacitor config included |
+| [`project/`](project/) | The Claude Design prototype bundle this app was built from (design source of truth; see [`project/HANDOFF.md`](project/HANDOFF.md)) |
+| [`chats/`](chats/) | Design-session transcripts — where the product decisions live |
+| [`branding/`](branding/) | AurevonLabs brand assets, including the official logo |
+| `Cohive by AurevonLabs.zip` | Original design-bundle export (superseded by `project/`) |
 
-**Don't render these files in a browser or take screenshots unless the user asks you to.** Everything you need — dimensions, colors, layout rules — is spelled out in the source. Read the HTML and CSS directly; a screenshot won't tell you anything they don't.
+## Heritage
 
-## Bundle contents
+Built on the hardened trip-planning core of
+[`mikerivera33/rhyme-plus`](https://github.com/mikerivera33/rhyme-plus)
+(`v2-universal-import`): geographic day clustering, nearest-neighbour routing,
+opening-hours and meal-slotting logic, extended with tier-aware scoring and the
+never-fail import scanner.
 
-- `README.md` — this file
-- `chats/` — conversation transcripts (read these!)
-- `project/` — the `Cohive by AurevonLabs` project files (HTML prototypes, assets, components)
+---
+© 2026 AurevonLabs · a division of Aurevon Ventures LLC. Demo data only; nothing charges anything.
