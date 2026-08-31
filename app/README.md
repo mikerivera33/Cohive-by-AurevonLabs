@@ -36,9 +36,10 @@ Two query params help when demoing:
 
 ## Native builds
 
-The `ios/` and `android/` Capacitor projects are committed, with app icons and
-splash screens (the Cohive hexagon on navy) already generated into both via
-`npx capacitor-assets generate --ios --android` from `assets/`.
+The `ios/` and `android/` Capacitor 8 projects are committed (iOS 15+ with
+UIScene adoption, Android SDK 36 / minSdk 24, AGP 8.13, Gradle 8.14.3), with app
+icons and splash screens (the Cohive hexagon on navy) already generated into both
+via `npx @capacitor/assets generate --ios --android` from `assets/`.
 
 ```bash
 npm run sync          # rebuild web assets + copy into both native shells
@@ -100,6 +101,21 @@ PLAYWRIGHT=$(npm root -g)/playwright npm run smoke -- http://127.0.0.1:4173
 `CHROMIUM=/path/to/chrome` overrides the browser binary. Map tiles come from a CDN — where
 that is unreachable the tile images don't paint, so the map assertions check Leaflet
 initialisation and the locally-rendered marker pins rather than loaded tiles.
+
+### Stress + fuzz — `npm run stress:engine` and `npm run stress`
+
+`stress:engine` fuzzes the engine with a seeded RNG: 300 randomized trips
+(0–120 spots, world-spanning coords, inverted/zero windows, weird hours) and
+2,000 adversarial scanner inputs (empty, whitespace, URLs, 10KB emoji floods),
+asserting the invariants that must hold for any input, plus determinism and a
+wall-clock budget (a 300-spot / 10-day packed plan schedules in ~16ms).
+
+`stress` (same env vars as `smoke`) is the browser endurance run: 50 full tab
+cycles with live map create/destroy while watching JS heap, DOM node and event
+listener counts over CDP; an 8-scan import flood to 32 spots; vote/theme/sheet
+spam; double-tap Generate; Days=999 clamping; oversized inputs and layout
+overflow checks. Heap stayed 3.6→4.3MB across the full run with flat node and
+listener counts, and exactly one live Leaflet map after churn.
 
 ## Product rules
 
