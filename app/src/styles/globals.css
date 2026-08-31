@@ -1,0 +1,326 @@
+/* Cohive design system.
+   Token values are carried over verbatim from the Claude Design prototype. */
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(900px 500px at 80% -10%, rgba(226, 105, 27, 0.14), transparent 60%),
+    radial-gradient(1000px 600px at 10% 10%, rgba(245, 165, 36, 0.07), transparent 55%),
+    #0a0e18;
+  font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+  overscroll-behavior: none;
+}
+
+#root {
+  min-height: 100%;
+}
+
+a {
+  color: #f5a524;
+  text-decoration: none;
+}
+a:hover {
+  color: #f6b93b;
+  text-decoration: underline;
+}
+
+/* ── Theme tokens ─────────────────────────────────────────────── */
+
+.cv {
+  --bg: #0a0f1c;
+  --bg2: #0e1626;
+  --panel: rgba(20, 28, 48, 0.72);
+  --panelS: #131c30;
+  --line: rgba(160, 170, 200, 0.14);
+  --lineB: rgba(160, 170, 200, 0.3);
+  --ink: #edeff6;
+  --soft: #8e97ab;
+  --honey: #f5a524;
+  --grad: linear-gradient(120deg, #f6b93b, #e2691b);
+  --onGrad: #241303;
+  --mint: #34d399;
+  --violet: #a78bfa;
+  --pink: #f472b6;
+  --amber: #fbbf24;
+  --glow: 0 0 22px rgba(245, 165, 36, 0.22);
+  --shadow: 0 10px 34px rgba(2, 6, 16, 0.5);
+}
+
+.cv.light {
+  --bg: #faf6ee;
+  --bg2: #f1eadb;
+  --panel: rgba(255, 253, 247, 0.88);
+  --panelS: #fffdf7;
+  --line: rgba(90, 70, 30, 0.12);
+  --lineB: rgba(90, 70, 30, 0.26);
+  --ink: #241c10;
+  --soft: #7a7261;
+  --honey: #d97615;
+  --grad: linear-gradient(120deg, #e2891b, #c75b10);
+  --onGrad: #fff7e8;
+  --glow: 0 0 18px rgba(217, 118, 21, 0.22);
+  --shadow: 0 10px 30px rgba(120, 80, 20, 0.14);
+}
+
+/* ── Form controls ────────────────────────────────────────────── */
+
+.cv input,
+.cv textarea,
+.cv select {
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--bg2);
+  border: 1px solid var(--lineB);
+  border-radius: 12px;
+  padding: 12px 14px;
+  width: 100%;
+  box-sizing: border-box;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+.cv input:focus,
+.cv textarea:focus,
+.cv select:focus {
+  outline: none;
+  border-color: var(--honey);
+  box-shadow: 0 0 0 3px rgba(245, 165, 36, 0.18);
+}
+
+.cv ::placeholder {
+  color: var(--soft);
+  opacity: 0.7;
+}
+
+.cv ::-webkit-scrollbar {
+  display: none;
+}
+
+.cv {
+  scrollbar-width: none;
+}
+
+/* ── Motion ───────────────────────────────────────────────────── */
+
+@keyframes cvrise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes cvpop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes cvfloat {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-16px) rotate(8deg);
+  }
+}
+@keyframes cvpulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes cvslide {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes cvfall {
+  to {
+    transform: translateY(140px) rotate(560deg);
+    opacity: 0;
+  }
+}
+@keyframes cvscan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(240%);
+  }
+}
+
+/* Scroll-driven reveal — `in` is added by the IntersectionObserver in useReveal. */
+.rv {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 0.5s ease,
+    transform 0.6s cubic-bezier(0.2, 0.8, 0.25, 1.12);
+}
+.rv.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* Press feedback — the prototype's `style-active` attribute. */
+.press:active {
+  transform: scale(var(--press, 0.96));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv *,
+  .cv *::before,
+  .cv *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .rv {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Leaflet ──────────────────────────────────────────────────── */
+
+.leaflet-container {
+  background: var(--bg2);
+  font-family: 'Outfit', system-ui, sans-serif;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--panelS);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.leaflet-popup-content {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  margin: 8px 12px;
+}
+.leaflet-container a.leaflet-popup-close-button {
+  color: var(--soft);
+}
+
+/* ── Repeated composites ──────────────────────────────────────── */
+
+/* Hexagon — the Cohive mark, used at every size. */
+.hex {
+  clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+}
+
+.grot {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+}
+
+/* Amber gradient clipped to text. */
+.gradText {
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.sectionTitle {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--honey);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+/* Filled amber call-to-action. */
+.ctaBtn {
+  background: var(--grad);
+  color: var(--onGrad);
+  border: none;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: var(--glow);
+}
+
+/* Outlined secondary action. */
+.ghostBtn {
+  background: none;
+  border: 1px solid var(--lineB);
+  color: var(--ink);
+  border-radius: 11px;
+  padding: 9px 14px;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* The glass panel used by cards and the tab bar. */
+.panelCard {
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+}
+
+/* Settings-style row with a hairline underneath. */
+.listRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13.5px;
+}
+
+/* Member / invitee pill. */
+.memberPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: var(--panelS);
+  border: 1px solid var(--lineB);
+  border-radius: 99px;
+  padding: 8px 15px;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+}

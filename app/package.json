@@ -1,0 +1,36 @@
+{
+  "name": "cohive",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cohive by AurevonLabs — trips, homes and dinners in one shared hive.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "verify:engine": "esbuild scripts/verify-engine.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/verify-engine.mjs --log-level=error && node node_modules/.cache/verify-engine.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "sync": "npm run build && cap sync",
+    "ios": "npm run sync && cap open ios",
+    "android": "npm run sync && cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/ios": "^6.2.0",
+    "@capacitor/status-bar": "^6.0.2",
+    "leaflet": "^1.9.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
+    "@types/leaflet": "^1.9.12",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  }
+}
