@@ -16,7 +16,8 @@
     "android": "npm run sync && cap open android",
     "stress:engine": "esbuild scripts/stress-engine.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/stress-engine.mjs --log-level=error && node node_modules/.cache/stress-engine.mjs",
     "stress": "node scripts/stress-browser.mjs",
-    "a11y": "node scripts/a11y.mjs"
+    "a11y": "node scripts/a11y.mjs",
+    "start": "node server.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
@@ -43,5 +44,8 @@
     "xcode": {
       "uuid": "^11.1.1"
     }
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
