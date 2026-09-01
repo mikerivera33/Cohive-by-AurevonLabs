@@ -12,6 +12,18 @@ Dark navy + honey amber, dark/light modes, spring motion, scroll-driven reveals.
 iOS-framed on desktop, full-bleed with safe-area insets on a phone,
 Capacitor-ready for the App Store / Play Store.
 
+## Live
+
+- **Web app**: https://mikerivera33.github.io/cohive-by-aurevonlabs/ — the full app,
+  auto-published from the `gh-pages` branch (single self-contained bundle,
+  hash-locked CSP). If it ever 404s, enable Pages once: repo Settings → Pages →
+  deploy from branch → `gh-pages`.
+- Rebuild + republish: `cd app && npx vite build --config vite.single.config.ts
+  && node scripts/inline-single.mjs`, then copy `app/deploy/cohive.html` over
+  `index.html`/`404.html` on the `gh-pages` branch.
+- `app/netlify.toml` is ready for a zero-config Netlify import from this repo
+  (app.netlify.com → Import from Git) if a netlify.app domain is preferred.
+
 ## Run it
 
 ```bash
