@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
-import { MapView } from '../components/MapView';
-import type { MapMarker } from '../components/MapView';
+import { LazyMap } from '../components/LazyMap';
+import type { MapMarker } from '../components/LazyMap';
 import { Reveal } from '../lib/Reveal';
 import { catColor, memberDot, press } from '../lib/styles';
 import { TOKYO_CENTER } from '../engine/seed';
@@ -92,7 +92,7 @@ export function HomeTab() {
           marginBottom: 16,
         }}
       >
-        <MapView id="map-home" center={TOKYO_CENTER} zoom={11} markers={markers} height={180} light={light} />
+        <LazyMap id="map-home" center={TOKYO_CENTER} zoom={11} markers={markers} height={180} light={light} />
         <div
           className="panelCard"
           style={{
@@ -231,7 +231,7 @@ export function HomeTab() {
           <span style={memberDot(members.find((m) => m.name === a.who)?.color || '#F5A524')} />
           <span style={{ color: 'var(--soft)' }}>
             <b style={{ color: 'var(--ink)', fontWeight: 600 }}>{a.who}</b> {a.what}
-            <span style={{ display: 'block', fontSize: 11, opacity: 0.7, marginTop: 2 }}>{a.when}</span>
+            <span style={{ display: 'block', fontSize: 11, marginTop: 2 }}>{a.when}</span>
           </span>
         </Reveal>
       ))}

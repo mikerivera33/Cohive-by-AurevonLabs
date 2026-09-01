@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 
-import { MapView } from '../components/MapView';
-import type { MapMarker } from '../components/MapView';
+import { LazyMap } from '../components/LazyMap';
+import type { MapMarker } from '../components/LazyMap';
 import { NYC_NEST_CENTER } from '../engine/seed';
 import { Reveal } from '../lib/Reveal';
 import { press } from '../lib/styles';
@@ -50,7 +50,7 @@ export function NestTab() {
           marginBottom: 14,
         }}
       >
-        <MapView
+        <LazyMap
           id="map-nest"
           center={NYC_NEST_CENTER}
           zoom={11}

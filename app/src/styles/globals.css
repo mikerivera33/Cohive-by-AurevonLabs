@@ -67,8 +67,10 @@ a:hover {
   --line: rgba(90, 70, 30, 0.12);
   --lineB: rgba(90, 70, 30, 0.26);
   --ink: #241c10;
-  --soft: #7a7261;
-  --honey: #d97615;
+  /* Darkened from the prototype's #7A7261/#D97615 to clear WCAG AA (4.5:1)
+     as text on the cream background; hue and warmth preserved. */
+  --soft: #6e6754;
+  --honey: #a85206;
   --grad: linear-gradient(120deg, #e2891b, #c75b10);
   --onGrad: #fff7e8;
   --glow: 0 0 18px rgba(217, 118, 21, 0.22);

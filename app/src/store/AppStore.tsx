@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
 import { planTrip, scanImport } from '../engine/engine';
 import * as seed from '../engine/seed';
 import { fireConfetti } from '../lib/confetti';
-import { load, save } from '../lib/storage';
+import { isBool, isShortString, isStringArray, load, save } from '../lib/storage';
 import type {
   ActivityItem,
   Expense,
@@ -144,7 +144,7 @@ function cloneNest(): Listing[] {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   /* ── appearance ───────────────────────────────────────────── */
-  const [light, setLight] = useState<boolean>(() => load('light', false));
+  const [light, setLight] = useState<boolean>(() => load('light', false, isBool));
   useEffect(() => save('light', light), [light]);
 
   /* ── onboarding ───────────────────────────────────────────── */
@@ -153,7 +153,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const start = new URLSearchParams(window.location.search).get('start');
     if (start === 'app') return true;
     if (start === 'onboarding') return false;
-    return load('onboarded', false);
+    return load('onboarded', false, isBool);
   });
   useEffect(() => save('onboarded', onboarded), [onboarded]);
 
@@ -191,9 +191,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [buildStage, setBuildStage] = useState(-1);
 
   /* ── subscription ─────────────────────────────────────────── */
-  const [planTier, setPlanTier] = useState<PlanTier>(() => load<PlanTier>('planTier', 'Free'));
-  const [refCode, setRefCode] = useState<string>(() => load('refCode', ''));
-  const [linked, setLinked] = useState<string[]>(() => load<string[]>('linked', []));
+  const isTier = (v: unknown): v is PlanTier =>
+    v === 'Free' || v === 'Cohive+' || v === 'Cohive+ Annual' || v === 'Platinum';
+  const [planTier, setPlanTier] = useState<PlanTier>(() => load<PlanTier>('planTier', 'Free', isTier));
+  const [refCode, setRefCode] = useState<string>(() => load('refCode', '', isShortString));
+  const [linked, setLinked] = useState<string[]>(() => load<string[]>('linked', [], isStringArray));
   useEffect(() => save('planTier', planTier), [planTier]);
   useEffect(() => save('refCode', refCode), [refCode]);
   useEffect(() => save('linked', linked), [linked]);

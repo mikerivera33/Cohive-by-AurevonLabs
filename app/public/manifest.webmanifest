@@ -1,0 +1,17 @@
+{
+  "name": "Cohive by AurevonLabs",
+  "short_name": "Cohive",
+  "description": "Trips, homes and dinners in one shared hive.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A0F1C",
+  "theme_color": "#0A0F1C",
+  "icons": [
+    {
+      "src": "/icons/icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

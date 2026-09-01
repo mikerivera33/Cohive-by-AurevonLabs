@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
-import { MapView } from '../components/MapView';
-import type { MapMarker } from '../components/MapView';
+import { LazyMap } from '../components/LazyMap';
+import type { MapMarker } from '../components/LazyMap';
 import { NYC_TABLE_CENTER } from '../engine/seed';
 import { Reveal } from '../lib/Reveal';
 import { chipStyle, press } from '../lib/styles';
@@ -71,7 +71,7 @@ export function TableTab() {
           marginBottom: 14,
         }}
       >
-        <MapView id="map-table" center={NYC_TABLE_CENTER} zoom={12} markers={markers} height={170} light={light} />
+        <LazyMap id="map-table" center={NYC_TABLE_CENTER} zoom={12} markers={markers} height={170} light={light} />
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>

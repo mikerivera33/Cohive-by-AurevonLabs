@@ -120,6 +120,9 @@ export function BudgetView() {
           onChange={(e) => setExpAmt(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && onAdd()}
           type="number"
+          inputMode="decimal"
+          enterKeyHint="done"
+          min={0}
           placeholder="$"
           aria-label="Expense amount"
           style={{ flex: 1 }}

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
-import { MapView } from '../../components/MapView';
-import type { MapMarker } from '../../components/MapView';
+import { LazyMap } from '../../components/LazyMap';
+import type { MapMarker } from '../../components/LazyMap';
 import { TOKYO_CENTER } from '../../engine/seed';
 import { Reveal } from '../../lib/Reveal';
 import { catChip, catColor, catLabel, press } from '../../lib/styles';
@@ -32,7 +32,7 @@ export function TripMapView() {
           boxShadow: 'var(--shadow)',
         }}
       >
-        <MapView id="map-trip" center={TOKYO_CENTER} zoom={11} markers={markers} height={240} light={light} />
+        <LazyMap id="map-trip" center={TOKYO_CENTER} zoom={11} markers={markers} height={240} light={light} />
         <div
           className="panelCard"
           style={{

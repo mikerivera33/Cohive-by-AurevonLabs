@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { press } from '../lib/styles';
 import { useApp } from '../store/AppStore';
@@ -67,14 +67,40 @@ const TIERS: TierDef[] = [
 
 export function PricingSheet() {
   const { pricingOpen, closePricing, purchase } = useApp();
+  const sheetRef = useRef<HTMLDivElement>(null);
 
+  // Escape closes; Tab cycles inside the sheet; focus returns to the opener.
   useEffect(() => {
     if (!pricingOpen) return;
+    const opener = document.activeElement as HTMLElement | null;
+    sheetRef.current?.focus();
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closePricing();
+      if (e.key === 'Escape') {
+        closePricing();
+        return;
+      }
+      if (e.key !== 'Tab' || !sheetRef.current) return;
+      const focusables = sheetRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
+
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      opener?.focus?.();
+    };
   }, [pricingOpen, closePricing]);
 
   if (!pricingOpen) return null;
@@ -108,6 +134,8 @@ export function PricingSheet() {
         }}
       />
       <div
+        ref={sheetRef}
+        tabIndex={-1}
         style={{
           position: 'relative',
           background: 'var(--bg)',
@@ -117,6 +145,7 @@ export function PricingSheet() {
           overflowY: 'auto',
           padding: '14px 20px 34px',
           animation: 'cvslide .45s cubic-bezier(.2,.9,.25,1.08) both',
+          outline: 'none',
         }}
       >
         <div style={{ width: 38, height: 4, borderRadius: 99, background: 'var(--lineB)', margin: '0 auto 16px' }} />

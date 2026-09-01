@@ -18,8 +18,14 @@ npm install
 npm run dev            # http://localhost:5173
 npm run build          # tsc --noEmit + vite build
 npm run verify:engine  # 36 engine property checks
+npm run stress:engine  # seeded fuzz: 300 trips + 2,000 scanner inputs
 npm run smoke          # 59-check browser walkthrough (needs Playwright — see app/README.md)
+npm run stress         # browser endurance: heap/node/listener tracking, floods, spam
+npm run a11y           # axe audit, all screens, both themes — must stay clean
 ```
+
+CI (`.github/workflows/ci.yml`) runs all of the above plus `npm audit`
+(fails on any vulnerability) and a `cap sync` sanity check on every push/PR.
 
 ## Things future sessions should know
 
@@ -42,3 +48,9 @@ npm run smoke          # 59-check browser walkthrough (needs Playwright — see 
 - **Tests**: keep `npm run verify:engine` and the smoke suite green; the smoke
   suite fails on any browser console error. Map tile CDNs may be unreachable in
   sandboxes — the map checks assert Leaflet init + marker pins, not painted tiles.
+- **Hardening invariants**: `index.html` carries a CSP (extend it if a new
+  origin is ever needed — don't remove it); localStorage reads go through the
+  validated `load()` in `src/lib/storage.ts`; Leaflet stays lazy-loaded via
+  `LazyMap`; light-mode `--soft`/`--honey` were darkened for WCAG AA — check
+  contrast (4.5:1) before changing any text color, and keep `npm run a11y`
+  clean.

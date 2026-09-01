@@ -101,7 +101,8 @@ export function Onboarding() {
   };
 
   return (
-    <div
+    <main
+      aria-label="Welcome to Cohive"
       style={{
         position: 'absolute',
         inset: 0,
@@ -390,6 +391,6 @@ export function Onboarding() {
           </button>
         </div>
       )}
-    </div>
+    </main>
   );
 }

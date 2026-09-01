@@ -110,6 +110,15 @@ initialisation and the locally-rendered marker pins rather than loaded tiles.
 asserting the invariants that must hold for any input, plus determinism and a
 wall-clock budget (a 300-spot / 10-day packed plan schedules in ~16ms).
 
+### Accessibility — `npm run a11y`
+
+Runs axe-core over every screen and the pricing sheet, in dark and light mode,
+failing on any serious/critical violation. Currently clean. The light-mode
+`--soft`/`--honey` text colors were darkened slightly from the prototype to
+clear WCAG AA contrast (4.5:1); the amber gradient CTAs are unchanged. The
+pricing sheet traps focus while open, restores it on close, and closes on
+Escape.
+
 `stress` (same env vars as `smoke`) is the browser endurance run: 50 full tab
 cycles with live map create/destroy while watching JS heap, DOM node and event
 listener counts over CDP; an 8-scan import flood to 32 spots; vote/theme/sheet
@@ -125,6 +134,26 @@ listener counts, and exactly one live Leaflet map after churn.
 - **Platinum $129 once**: everything in Annual, for life
 - Any paid plan generates a permanent, non-expirable referral code — 10% commission per
   signup, paid only when that signup buys a paid plan
+
+## Hardening
+
+- **Crash safety**: a top-level error boundary (styled with raw values so it
+  renders even if theming breaks) catches any render error — reload, never a
+  white screen.
+- **CSP**: `index.html` ships a Content-Security-Policy locked to self, Google
+  Fonts, and Carto tiles; `object-src 'none'`, no-referrer, external links all
+  `rel="noreferrer"`. Applies inside the Capacitor webviews too.
+- **Storage**: everything read back from localStorage is validated (type,
+  whitelist, length caps) before use — corrupted or hand-edited values fall
+  back to defaults instead of propagating.
+- **Performance**: Leaflet is code-split and lazy-loaded (main bundle
+  225KB / 70KB gzip; the 150KB map chunk loads when the first map renders,
+  with a height-matched placeholder to avoid layout shift).
+- **Native**: `android:allowBackup="false"`; iOS ATS fully on (no exceptions);
+  app id and manifests validated.
+- **CI**: `.github/workflows/ci.yml` runs audit (fails on any vulnerability),
+  typecheck+build, both engine suites, the 59-check walkthrough, the browser
+  stress run, the axe audit, and a `cap sync` sanity check on every push/PR.
 
 ## What's persisted
 
