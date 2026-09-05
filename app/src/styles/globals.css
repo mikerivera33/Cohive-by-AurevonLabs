@@ -11,6 +11,8 @@
 html,
 body {
   height: 100%;
+  height: 100dvh;
+  overflow-x: hidden;
 }
 
 body {
@@ -22,10 +24,14 @@ body {
     #050914;
   font-family: 'Outfit', system-ui, -apple-system, sans-serif;
   overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 #root {
   min-height: 100%;
+  min-height: 100dvh;
+  overflow-x: hidden;
 }
 
 a {
@@ -95,12 +101,13 @@ a:hover {
 .cv textarea,
 .cv select {
   font-family: 'Outfit', system-ui, sans-serif;
-  font-size: 14px;
+  font-size: 16px;
   color: var(--ink);
   background: rgba(10, 20, 40, 0.55);
   border: 1px solid var(--lineB);
   border-radius: 999px;
   padding: 14px 18px;
+  min-height: 48px;
   width: 100%;
   box-sizing: border-box;
   transition:
@@ -423,10 +430,37 @@ a:hover {
     box-shadow 0.25s var(--ease-out),
     background 0.25s var(--ease-out),
     color 0.2s var(--ease-out),
-    border-color 0.2s var(--ease-out);
+    border-color 0.2s var(--ease-out),
+    filter 0.2s var(--ease-out);
 }
 .press:active {
   transform: scale(var(--press, 0.96));
+}
+
+/* iOS HIG — interactive controls should clear 44×44pt. */
+.tapTarget {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Keyboard / desktop focus — visible only for non-pointer navigation. */
+.cv :where(button, a, input, textarea, select, [role='button'], [role='switch'], [tabindex]:not([tabindex='-1'])):focus-visible {
+  outline: 2px solid var(--honey);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .press:hover:not(:disabled) {
+    filter: brightness(1.05);
+  }
+  .ctaBtn:hover:not(:disabled) {
+    filter: brightness(1.08);
+    box-shadow: 0 0 40px rgba(78, 180, 255, 0.4);
+  }
+  .tabBarBtn:hover:not([aria-current='page']) {
+    background: rgba(78, 180, 255, 0.08);
+    color: var(--ink);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -436,9 +470,16 @@ a:hover {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
   .rv {
     opacity: 1;
+    transform: none;
+  }
+  .tabPane {
+    animation: none !important;
+  }
+  .press:active {
     transform: none;
   }
   .cv-atmosphere::before,
@@ -526,12 +567,13 @@ a:hover {
   background: var(--bg);
   outline: none;
   animation: cvrise 0.35s cubic-bezier(0.2, 0.9, 0.25, 1.1) both;
+  overflow: hidden;
 }
 .mapFullscreen__bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px 12px;
+  padding: calc(var(--safe-top, 16px) + 4px) 16px 12px;
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
   position: relative;
@@ -545,7 +587,8 @@ a:hover {
   border: 1px solid var(--lineB);
   color: var(--ink);
   border-radius: 999px;
-  padding: 10px 16px;
+  min-height: 44px;
+  padding: 10px 18px;
   font-weight: 600;
   font-size: 12px;
   letter-spacing: 0.06em;
@@ -582,7 +625,7 @@ a:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  padding: 10px 16px 18px;
+  padding: 10px 16px calc(var(--safe-bottom, 16px) + 10px);
   border-top: 1px solid var(--line);
   font-size: 11.5px;
   color: var(--soft);
@@ -632,6 +675,7 @@ a:hover {
   cursor: pointer;
   box-shadow: var(--glow);
   border-radius: 999px;
+  min-height: 44px;
   transition:
     transform 0.2s var(--ease-out),
     box-shadow 0.25s var(--ease-out),
@@ -640,6 +684,10 @@ a:hover {
 .ctaBtn:hover {
   filter: brightness(1.06);
 }
+.ctaBtn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
 
 /* Soft ghost capsule. */
 .ghostBtn {
@@ -647,7 +695,8 @@ a:hover {
   border: 1px solid var(--lineB);
   color: var(--ink);
   border-radius: 999px;
-  padding: 9px 16px;
+  min-height: 44px;
+  padding: 10px 16px;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-weight: 600;
   font-size: 10.5px;
@@ -663,6 +712,47 @@ a:hover {
   border-color: var(--honey);
   color: var(--honey);
   background: rgba(78, 180, 255, 0.08);
+}
+
+/* Floating capsule tab shell */
+.tabBar {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: var(--safe-bottom, 26px);
+  z-index: 30;
+  display: flex;
+  background: rgba(10, 18, 36, 0.55);
+  backdrop-filter: blur(28px) saturate(1.35);
+  -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  border: 1px solid var(--lineB);
+  border-radius: 999px;
+  padding: 4px;
+  box-shadow: var(--shadow);
+  transition:
+    background 0.3s var(--ease-out),
+    border-color 0.3s var(--ease-out);
+}
+.cv.light .tabBar {
+  background: rgba(255, 255, 255, 0.72);
+}
+.tabBarBtn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 52px;
+  padding: 8px 0;
+  border: none;
+  cursor: pointer;
+  border-radius: 999px;
+  transition:
+    background 0.28s var(--ease-spring),
+    color 0.28s var(--ease-out),
+    box-shadow 0.28s var(--ease-out),
+    transform 0.2s var(--ease-out);
 }
 
 /* Soft glass surface — interaction containers only. */
@@ -729,6 +819,7 @@ a:hover {
   gap: 10px;
   width: 100%;
   border-radius: 999px;
+  min-height: 52px;
   padding: 16px 20px;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-weight: 600;

@@ -118,6 +118,10 @@ export function DeviceFrame({ dark, children }: { dark: boolean; children: React
             position: 'fixed',
             inset: 0,
             overflow: 'hidden',
+            width: '100%',
+            maxWidth: '100vw',
+            minHeight: '100dvh',
+            height: '100dvh',
             '--safe-top': 'calc(env(safe-area-inset-top, 0px) + 16px)',
             '--safe-bottom': 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
           } as React.CSSProperties
@@ -130,30 +134,32 @@ export function DeviceFrame({ dark, children }: { dark: boolean; children: React
 
   return (
     <div
+      className="deviceFrameDesktop"
       style={{
-        minHeight: '100vh',
+        minHeight: '100dvh',
         display: 'grid',
         placeItems: 'center',
-        padding: '26px 12px',
+        padding: '32px 16px',
         boxSizing: 'border-box',
         background: dark
-          ? 'radial-gradient(900px 520px at 80% 0%, rgba(78,180,255,0.16), transparent 55%), radial-gradient(800px 480px at 10% 90%, rgba(27,79,216,0.2), transparent 50%), #050914'
-          : 'radial-gradient(900px 520px at 80% 0%, rgba(143,208,255,0.45), transparent 55%), radial-gradient(800px 480px at 10% 90%, rgba(59,158,255,0.22), transparent 50%), #e8f1fa',
+          ? 'radial-gradient(1100px 640px at 78% -6%, rgba(78,180,255,0.2), transparent 55%), radial-gradient(900px 520px at 8% 92%, rgba(27,79,216,0.28), transparent 52%), radial-gradient(600px 400px at 50% 50%, rgba(143,208,255,0.06), transparent 60%), #050914'
+          : 'radial-gradient(1100px 640px at 78% -6%, rgba(143,208,255,0.5), transparent 55%), radial-gradient(900px 520px at 8% 92%, rgba(59,158,255,0.26), transparent 52%), #e8f1fa',
       }}
     >
       <div
         style={{
           width: FRAME_W,
           height: FRAME_H,
-          borderRadius: 48,
+          borderRadius: 54,
           overflow: 'hidden',
           position: 'relative',
           background: dark ? '#000' : '#F2F2F7',
           boxShadow: dark
-            ? '0 40px 90px rgba(8,24,56,0.55), 0 0 0 1px rgba(120,170,230,0.16)'
-            : '0 40px 90px rgba(40,90,160,0.18), 0 0 0 1px rgba(30,70,130,0.1)',
+            ? '0 48px 110px rgba(4,12,32,0.65), 0 0 0 1px rgba(120,170,230,0.18), 0 0 80px rgba(78,180,255,0.12)'
+            : '0 48px 110px rgba(40,90,160,0.22), 0 0 0 1px rgba(30,70,130,0.12), 0 0 60px rgba(59,158,255,0.14)',
           fontFamily: '-apple-system, system-ui, sans-serif',
           WebkitFontSmoothing: 'antialiased',
+          transition: 'box-shadow 0.4s cubic-bezier(0.22, 0.9, 0.28, 1)',
         }}
       >
         {/* dynamic island */}

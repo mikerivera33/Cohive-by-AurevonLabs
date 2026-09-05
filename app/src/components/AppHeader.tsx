@@ -2,7 +2,7 @@ import { press } from '../lib/styles';
 import { useApp } from '../store/AppStore';
 
 export function AppHeader() {
-  const { planTier, toggleTheme } = useApp();
+  const { planTier, toggleTheme, openPricing } = useApp();
 
   return (
     <header
@@ -44,9 +44,13 @@ export function AppHeader() {
           by AurevonLabs
         </span>
       </div>
-      <span
-        className="grot"
+      <button
+        type="button"
+        className="press grot"
+        onClick={openPricing}
+        aria-label={`Current plan ${planTier}. Open plans`}
         style={{
+          ...press(0.96),
           marginLeft: 'auto',
           fontSize: 9,
           fontWeight: 600,
@@ -55,25 +59,31 @@ export function AppHeader() {
           color: 'var(--honey)',
           border: '1px solid var(--lineB)',
           borderRadius: 99,
-          padding: '5px 11px',
+          minHeight: 44,
+          padding: '0 14px',
           background: 'var(--panel)',
           backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          cursor: 'pointer',
+          fontFamily: "'Space Grotesk', system-ui, sans-serif",
         }}
       >
         {planTier}
-      </span>
+      </button>
       <button
-        className="press"
+        type="button"
+        className="press tapTarget"
         onClick={toggleTheme}
         aria-label="Toggle theme"
         style={{
           ...press(0.92),
-          width: 34,
-          height: 34,
+          width: 44,
+          height: 44,
           borderRadius: 99,
           border: '1px solid var(--lineB)',
           background: 'var(--panel)',
           backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
           cursor: 'pointer',
           display: 'grid',
           placeItems: 'center',
@@ -83,8 +93,8 @@ export function AppHeader() {
         <span
           aria-hidden
           style={{
-            width: 13,
-            height: 13,
+            width: 14,
+            height: 14,
             borderRadius: 99,
             background: 'var(--grad)',
             boxShadow: 'var(--glow)',

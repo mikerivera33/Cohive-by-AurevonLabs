@@ -120,6 +120,7 @@ export function PricingSheet() {
       }}
     >
       <button
+        type="button"
         onClick={closePricing}
         aria-label="Close plans"
         style={{
@@ -142,10 +143,12 @@ export function PricingSheet() {
           borderRadius: '36px 36px 0 0',
           maxHeight: '82%',
           overflowY: 'auto',
-          padding: '14px 20px 34px',
+          padding: '14px 20px calc(var(--safe-bottom, 16px) + 28px)',
           animation: 'cvslide .48s cubic-bezier(.2,.85,.25,1.1) both',
           outline: 'none',
           background: 'linear-gradient(180deg, var(--bg2), var(--bg))',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
         <div style={{ width: 38, height: 4, borderRadius: 99, background: 'var(--lineB)', margin: '0 auto 16px' }} />
@@ -209,6 +212,7 @@ export function PricingSheet() {
               </div>
             ))}
             <button
+              type="button"
               className="press grot"
               onClick={() => purchase(p.name)}
               style={{
@@ -219,6 +223,7 @@ export function PricingSheet() {
                 color: p.featured ? 'var(--onGrad)' : 'var(--honey)',
                 border: p.featured ? 'none' : '1px solid var(--lineB)',
                 borderRadius: 999,
+                minHeight: 44,
                 padding: '12px 16px',
                 fontWeight: 700,
                 fontSize: 11.5,

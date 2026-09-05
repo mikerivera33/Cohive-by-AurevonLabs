@@ -70,7 +70,7 @@ export function NestTab() {
               position: 'absolute',
               inset: '0 auto 0 0',
               width: 4,
-              borderRadius: '0 8px 8px 0',
+              borderRadius: '0 999px 999px 0',
               background: 'var(--violet)',
             }}
           />
@@ -114,6 +114,7 @@ export function NestTab() {
               return (
                 <button
                   key={em}
+                  type="button"
                   className="press"
                   onClick={() => toggleReaction(n.id, em)}
                   aria-pressed={mine}
@@ -124,7 +125,8 @@ export function NestTab() {
                     alignItems: 'center',
                     gap: 4,
                     borderRadius: 99,
-                    padding: '6px 13px',
+                    minHeight: 44,
+                    padding: '8px 16px',
                     fontSize: 13,
                     cursor: 'pointer',
                     transition: 'all .18s ease',
@@ -138,18 +140,21 @@ export function NestTab() {
               );
             })}
             <button
-              className="grot"
+              type="button"
+              className="press grot"
               onClick={() => {
                 setFocus({ lat: n.lat, lng: n.lng, zoom: 14, nonce: Date.now() });
                 say('Pinned ' + n.hood);
               }}
               style={{
+                ...press(0.94),
                 marginLeft: 'auto',
                 background: 'none',
                 border: '1px solid var(--line)',
                 color: 'var(--soft)',
                 borderRadius: 99,
-                padding: '6px 13px',
+                minHeight: 44,
+                padding: '8px 14px',
                 fontSize: 11,
                 fontWeight: 600,
                 cursor: 'pointer',

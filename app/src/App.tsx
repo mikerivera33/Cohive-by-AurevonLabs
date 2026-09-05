@@ -66,11 +66,13 @@ function Shell() {
               style={{
                 flex: 1,
                 overflowY: 'auto',
+                overflowX: 'hidden',
                 overscrollBehavior: 'contain',
                 WebkitOverflowScrolling: 'touch',
-                padding: '16px 18px 130px',
+                padding: '16px 18px calc(118px + var(--safe-bottom, 26px))',
                 position: 'relative',
                 zIndex: 1,
+                scrollBehavior: 'smooth',
               }}
             >
               <div key={tab + ':' + tripView} className="tabPane">
