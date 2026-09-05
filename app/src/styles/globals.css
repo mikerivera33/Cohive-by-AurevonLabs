@@ -495,3 +495,89 @@ a:hover {
   overflow: hidden;
   box-shadow: var(--shadow);
 }
+
+/* Visually hidden — keep for screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Onboarding gateway (beginning sign-in) ───────────────────── */
+
+.gw-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  border-radius: var(--r-md);
+  padding: 15px 18px;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  border: none;
+  transition:
+    transform 0.2s var(--ease-out),
+    box-shadow 0.25s var(--ease-out),
+    background 0.25s var(--ease-out),
+    border-color 0.2s var(--ease-out),
+    opacity 0.2s var(--ease-out);
+}
+
+.gw-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.gw-btn--google {
+  background: rgba(255, 255, 255, 0.96);
+  color: #1a2333;
+  box-shadow: 0 10px 28px rgba(8, 24, 56, 0.18);
+}
+
+.cv.light .gw-btn--google {
+  background: #ffffff;
+  color: #0c1a2e;
+  border: 1px solid rgba(30, 70, 130, 0.14);
+  box-shadow: 0 8px 22px rgba(40, 90, 160, 0.1);
+}
+
+.gw-btn--apple {
+  background: #0a0f1c;
+  color: #f4f7fb;
+  box-shadow: 0 12px 30px rgba(2, 8, 24, 0.35);
+}
+
+.cv.light .gw-btn--apple {
+  background: #0c1a2e;
+  color: #f7fbff;
+}
+
+.gw-btn--contact {
+  color: var(--honey);
+  background: rgba(78, 180, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(78, 180, 255, 0.28);
+}
+
+.cv.light .gw-btn--contact {
+  background: rgba(22, 87, 184, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(22, 87, 184, 0.28);
+}
+
+.gw-btn--contact:hover {
+  background: rgba(78, 180, 255, 0.12);
+}
+
+.cv.light .gw-btn--contact:hover {
+  background: rgba(22, 87, 184, 0.09);
+}
+

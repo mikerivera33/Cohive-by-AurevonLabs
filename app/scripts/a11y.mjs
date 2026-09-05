@@ -50,13 +50,13 @@ const tab = async (name) => {
 
 console.log('\nonboarding');
 await page.goto(BASE + '/?start=onboarding', { waitUntil: 'networkidle' });
+await scan('gateway');
+await page.getByRole('button', { name: /Continue with Apple/ }).click();
+await page.waitForTimeout(400);
 await scan('intro slides');
 await page.getByRole('button', { name: 'Continue', exact: true }).click();
 await page.getByRole('button', { name: 'Continue', exact: true }).click();
 await page.getByRole('button', { name: 'Continue', exact: true }).click();
-await page.waitForTimeout(400);
-await scan('auth');
-await page.getByRole('button', { name: /Continue with Apple/ }).click();
 await page.waitForTimeout(400);
 await scan('create hive');
 await page.getByRole('button', { name: 'Create hive' }).click();

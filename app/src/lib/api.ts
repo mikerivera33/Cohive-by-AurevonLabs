@@ -75,13 +75,55 @@ export async function apiHealthy(): Promise<boolean> {
   }
 }
 
-export async function apiDemoAuth(provider: 'apple' | 'google' | 'email', name?: string) {
-  const data = await apiFetch<{ token: string; user: { id: string; name: string; email: string } }>(
-    '/api/auth/demo',
-    { method: 'POST', body: JSON.stringify({ provider, name }) }
-  );
+export async function apiDemoAuth(
+  provider: 'apple' | 'google' | 'email' | 'phone',
+  opts?: { name?: string; contact?: string }
+) {
+  const data = await apiFetch<{
+    token: string;
+    user: { id: string; name: string; email: string };
+    mode?: string;
+  }>('/api/auth/demo', {
+    method: 'POST',
+    body: JSON.stringify({
+      provider,
+      name: opts?.name,
+      contact: opts?.contact,
+    }),
+  });
   setApiToken(data.token);
   return data;
+}
+
+export type AuthProviders = {
+  google: boolean;
+  apple: boolean;
+  mode: 'oauth' | 'demo';
+};
+
+/** Which social providers have real OAuth client IDs configured on the server. */
+export async function apiAuthProviders(): Promise<AuthProviders> {
+  try {
+    const res = await fetch('/api/auth/providers', {
+      method: 'GET',
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!res.ok) return { google: false, apple: false, mode: 'demo' };
+    const data = (await res.json()) as Partial<AuthProviders> & { ok?: boolean };
+    // Preview-static middleware answers `{ ok: false }` for every /api path.
+    if (data?.ok === false) return { google: false, apple: false, mode: 'demo' };
+    return {
+      google: Boolean(data.google),
+      apple: Boolean(data.apple),
+      mode: data.google || data.apple ? 'oauth' : 'demo',
+    };
+  } catch {
+    return { google: false, apple: false, mode: 'demo' };
+  }
+}
+
+export function oauthStartPath(provider: 'google' | 'apple'): string {
+  return '/api/auth/oauth/' + provider;
 }
 
 export async function apiMe() {

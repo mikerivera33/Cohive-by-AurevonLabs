@@ -11,6 +11,7 @@ import { sanitizeImportText } from './sanitize.mjs';
 import { takeToken } from './rateLimit.mjs';
 import { MAX_JSON_BODY_BYTES, parseJsonBody } from './safeJson.mjs';
 import { scanImport as defaultScanImport } from './engine-bundle.mjs';
+import { authorizeUrl, exchangeCode, oauthConfig, providersPayload } from './oauth.mjs';
 
 const SCAN_LIMIT_USER = { limit: 30, windowMs: 60_000 };
 const SCAN_LIMIT_IP = { limit: 60, windowMs: 60_000 };
@@ -37,6 +38,19 @@ function json(status, body, extraHeaders = {}) {
   };
 }
 
+function redirect(location, extraHeaders = {}) {
+  return {
+    status: 302,
+    headers: {
+      Location: location,
+      'Cache-Control': 'no-store',
+      ...CORS,
+      ...extraHeaders,
+    },
+    body: '',
+  };
+}
+
 function bearer(reqHeaders) {
   const h = reqHeaders.get?.('authorization') || reqHeaders.authorization || '';
   const m = String(h).match(/^Bearer\s+(.+)$/i);
@@ -56,19 +70,26 @@ export function createApi(deps = {}) {
   const store = deps.store || createStore(seed);
   const scanImportFn = deps.scanImport || defaultScanImport;
 
-  async function dispatch(method, pathname, headers, bodyText, ip) {
+  async function dispatch(method, pathname, headers, bodyText, ip, search = '') {
     if (method === 'OPTIONS') {
       return { status: 204, headers: { ...CORS }, body: '' };
     }
 
     const path = pathname.replace(/\/+$/, '') || '/';
+    const query = new URLSearchParams(typeof search === 'string' ? search.replace(/^\?/, '') : '');
     let body = {};
     if (bodyText && method !== 'GET' && method !== 'HEAD') {
-      const parsed = parseJsonBody(bodyText);
-      if (!parsed.ok) {
-        return json(parsed.error === 'body_too_large' ? 413 : 400, { error: parsed.error });
+      const ct = String(headers.get?.('content-type') || headers['content-type'] || '');
+      if (ct.includes('application/x-www-form-urlencoded')) {
+        const form = new URLSearchParams(bodyText);
+        body = Object.fromEntries(form.entries());
+      } else {
+        const parsed = parseJsonBody(bodyText);
+        if (!parsed.ok) {
+          return json(parsed.error === 'body_too_large' ? 413 : 400, { error: parsed.error });
+        }
+        body = parsed.value;
       }
-      body = parsed.value;
     }
 
     const token = bearer(headers);
@@ -107,6 +128,45 @@ export function createApi(deps = {}) {
       const result = store.demoAuth(body);
       if (result.error) return json(result.status, { error: result.error });
       return json(201, result);
+    }
+    if (method === 'GET' && path === '/api/auth/providers') {
+      return json(200, providersPayload());
+    }
+    if (method === 'GET' && path === '/api/auth/oauth/google') {
+      const limited = rateLimitAuth();
+      if (limited) return limited;
+      const url = authorizeUrl('google', 'cohive');
+      if (!url) return json(501, { error: 'oauth_not_configured', provider: 'google', demo: true });
+      return redirect(url);
+    }
+    if (method === 'GET' && path === '/api/auth/oauth/apple') {
+      const limited = rateLimitAuth();
+      if (limited) return limited;
+      const url = authorizeUrl('apple', 'cohive');
+      if (!url) return json(501, { error: 'oauth_not_configured', provider: 'apple', demo: true });
+      return redirect(url);
+    }
+    if (
+      (method === 'GET' || method === 'POST') &&
+      (path === '/api/auth/oauth/google/callback' || path === '/api/auth/oauth/apple/callback')
+    ) {
+      const limited = rateLimitAuth();
+      if (limited) return limited;
+      const provider = path.includes('/apple/') ? 'apple' : 'google';
+      const cfg = oauthConfig();
+      const code = String(body.code || query.get('code') || '').trim();
+      const appHome = `${cfg.publicBase}/?start=onboarding&authed=1`;
+      const profile = await exchangeCode(provider, code);
+      const result = profile
+        ? store.oauthUpsert(profile)
+        : store.oauthUpsert({
+            provider,
+            email: '',
+            name: 'You',
+            verified: false,
+          });
+      const dest = `${appHome}&token=${encodeURIComponent(result.token)}&mode=${encodeURIComponent(result.mode)}`;
+      return redirect(dest);
     }
     if (method === 'POST' && path === '/api/auth/logout') {
       store.logout(token);
@@ -231,7 +291,14 @@ export function createApi(deps = {}) {
     const bodyText =
       request.method === 'GET' || request.method === 'HEAD' ? '' : await request.text();
     const ip = clientIp(headers);
-    const result = await dispatch(request.method, url.pathname, headers, bodyText, ip);
+    const result = await dispatch(
+      request.method,
+      url.pathname,
+      headers,
+      bodyText,
+      ip,
+      url.search
+    );
     return new Response(result.body, { status: result.status, headers: result.headers });
   }
 
@@ -259,10 +326,18 @@ export function createApi(deps = {}) {
       const headers = {
         get: (k) => req.headers[k.toLowerCase()],
         authorization: req.headers.authorization,
+        'content-type': req.headers['content-type'],
         'x-forwarded-for': req.headers['x-forwarded-for'],
       };
       const ip = clientIp(headers, req.socket?.remoteAddress || '0.0.0.0');
-      const result = await dispatch(req.method || 'GET', url.pathname, headers, bodyText, ip);
+      const result = await dispatch(
+        req.method || 'GET',
+        url.pathname,
+        headers,
+        bodyText,
+        ip,
+        url.search
+      );
       res.writeHead(result.status, result.headers);
       res.end(result.body);
       return true;

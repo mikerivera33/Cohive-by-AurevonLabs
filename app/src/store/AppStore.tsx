@@ -22,10 +22,11 @@ import {
   apiListTrips,
   apiScan,
   getApiToken,
+  setApiToken,
 } from '../lib/api';
 import { fireConfetti } from '../lib/confetti';
 import { sanitizeImportText } from '../lib/sanitize';
-import { isBool, isShortString, isStringArray, load, save } from '../lib/storage';
+import { isBool, isSessionToken, isShortString, isStringArray, load, save } from '../lib/storage';
 import type {
   ActivityItem,
   Expense,
@@ -87,7 +88,12 @@ interface AppStore {
   finishOnboarding: (hiveName?: string) => void;
   replayOnboarding: () => void;
   /** Creates a real API session when the backend is up; no-ops offline. */
-  authenticate: (provider: 'apple' | 'google' | 'email') => Promise<void>;
+  authenticate: (
+    provider: 'apple' | 'google' | 'email' | 'phone',
+    opts?: { name?: string; contact?: string }
+  ) => Promise<void>;
+  /** Accept an OAuth redirect token from the URL (if present) and hydrate. */
+  acceptAuthToken: (token: string) => Promise<void>;
   /** True when votes/members/scan go through server-enforced ACL. */
   apiLive: boolean;
 
@@ -319,16 +325,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [hydrateFromApi]);
 
   const authenticate = useCallback(
-    async (provider: 'apple' | 'google' | 'email') => {
+    async (
+      provider: 'apple' | 'google' | 'email' | 'phone',
+      opts?: { name?: string; contact?: string }
+    ) => {
       try {
         const healthy = await apiHealthy();
         if (!healthy) return;
-        await apiDemoAuth(provider);
+        await apiDemoAuth(provider, opts);
         const { trips } = await apiListTrips();
         if (trips[0]) await hydrateFromApi(trips[0].id);
       } catch (e) {
         const code = e instanceof ApiError ? e.code : 'auth_failed';
         say('Sign-in unavailable (' + code + ') — continuing offline');
+      }
+    },
+    [hydrateFromApi, say]
+  );
+
+  const acceptAuthToken = useCallback(
+    async (token: string) => {
+      if (!isSessionToken(token)) return;
+      setApiToken(token);
+      try {
+        const healthy = await apiHealthy();
+        if (!healthy) return;
+        const { trips } = await apiListTrips();
+        if (trips[0]) await hydrateFromApi(trips[0].id);
+      } catch (e) {
+        const code = e instanceof ApiError ? e.code : 'auth_failed';
+        say('Session restore failed (' + code + ')');
       }
     },
     [hydrateFromApi, say]
@@ -613,6 +639,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       finishOnboarding,
       replayOnboarding,
       authenticate,
+      acceptAuthToken,
       apiLive,
       tab,
       setTab,
@@ -668,7 +695,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       confetti: fireConfetti,
     }),
     [
-      light, onboarded, finishOnboarding, replayOnboarding, authenticate, apiLive, tab, tripView,
+      light, onboarded, finishOnboarding, replayOnboarding, authenticate, acceptAuthToken, apiLive, tab, tripView,
       tripMeta, spots, expenses, members, activity, nest, table, addedIds,
       setTier, addSpotFromScan, addExpense, addMember, toggleReaction,
       scanText, scanning, scanResult, scan,

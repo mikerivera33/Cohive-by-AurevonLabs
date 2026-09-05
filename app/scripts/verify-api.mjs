@@ -100,6 +100,31 @@ await aok('demo auth + trip membership', async () => {
   tripId = trips.data.trips[0].id;
 });
 
+await aok('auth providers advertise demo mode without OAuth keys', async () => {
+  const res = await req('GET', '/api/auth/providers');
+  assert.equal(res.status, 200);
+  assert.equal(res.data.mode, 'demo');
+  assert.equal(res.data.google, false);
+  assert.equal(res.data.apple, false);
+});
+
+await aok('demo auth accepts phone contact', async () => {
+  const res = await req('POST', '/api/auth/demo', {
+    provider: 'phone',
+    name: 'Pat',
+    contact: '+1 555 010 9988',
+  });
+  assert.equal(res.status, 201);
+  assert.ok(res.data.token);
+  assert.equal(res.data.mode, 'demo');
+});
+
+await aok('oauth start without keys returns demo hint', async () => {
+  const res = await req('GET', '/api/auth/oauth/google');
+  assert.equal(res.status, 501);
+  assert.equal(res.data.demo, true);
+});
+
 await aok('outsider cannot read trip', async () => {
   const b = await req('POST', '/api/auth/register', {
     email: 'outsider@cohive.test',

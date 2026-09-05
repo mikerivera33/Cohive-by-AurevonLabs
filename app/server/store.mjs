@@ -254,14 +254,30 @@ export function createStore(seed = null, options = {}) {
     return { user: publicUser(user), token };
   }
 
-  /** Demo onboarding providers — still creates a real session + membership. */
-  function demoAuth({ provider, name }) {
+  /** Demo / provisional onboarding providers — still creates a real session + membership. */
+  function demoAuth({ provider, name, contact }) {
     const p = String(provider || 'email');
-    if (p !== 'apple' && p !== 'google' && p !== 'email') {
+    if (p !== 'apple' && p !== 'google' && p !== 'email' && p !== 'phone') {
       return { error: 'invalid_provider', status: 400 };
     }
     const display = String(name || 'You').trim().slice(0, 64) || 'You';
-    const email = `demo-${p}-${id().slice(0, 8)}@cohive.local`;
+    const rawContact = String(contact || '').trim().slice(0, 120);
+    let email;
+    if (p === 'email' && rawContact.includes('@')) {
+      email = rawContact.toLowerCase();
+    } else if (p === 'phone' && rawContact) {
+      const digits = rawContact.replace(/[^\d+]/g, '').slice(0, 20);
+      email = `phone-${digits || id().slice(0, 8)}@cohive.local`;
+    } else {
+      email = `demo-${p}-${id().slice(0, 8)}@cohive.local`;
+    }
+    const existing = users.get(email);
+    if (existing) {
+      const token = createSession(existing.id);
+      ensureDemoMembership(existing);
+      schedulePersist();
+      return { user: publicUser(existing), token, mode: 'demo' };
+    }
     const { salt, hash } = hashPassword(randomBytes(16).toString('hex'));
     const user = {
       id: id(),
@@ -270,6 +286,7 @@ export function createStore(seed = null, options = {}) {
       salt,
       hash,
       provider: p,
+      contact: rawContact || undefined,
       createdAt: new Date().toISOString(),
     };
     users.set(email, user);
@@ -277,7 +294,46 @@ export function createStore(seed = null, options = {}) {
     const token = createSession(user.id);
     ensureDemoMembership(user);
     schedulePersist();
-    return { user: publicUser(user), token };
+    return { user: publicUser(user), token, mode: 'demo' };
+  }
+
+  /** Upsert an OAuth (or provisional OAuth-return) user and open a session. */
+  function oauthUpsert({ provider, email, name, verified }) {
+    const p = provider === 'apple' ? 'apple' : 'google';
+    const norm = String(email || '')
+      .trim()
+      .toLowerCase()
+      .slice(0, 120);
+    const mail = norm.includes('@') ? norm : `oauth-${p}-${id().slice(0, 8)}@cohive.local`;
+    const display = String(name || 'You').trim().slice(0, 64) || 'You';
+    let user = users.get(mail);
+    if (!user) {
+      const { salt, hash } = hashPassword(randomBytes(16).toString('hex'));
+      user = {
+        id: id(),
+        email: mail,
+        name: display,
+        salt,
+        hash,
+        provider: p,
+        oauthVerified: Boolean(verified),
+        createdAt: new Date().toISOString(),
+      };
+      users.set(mail, user);
+      users.set(user.id, user);
+    } else {
+      user.provider = p;
+      if (display && display !== 'You') user.name = display;
+      user.oauthVerified = Boolean(verified);
+    }
+    const token = createSession(user.id);
+    ensureDemoMembership(user);
+    schedulePersist();
+    return {
+      user: publicUser(user),
+      token,
+      mode: verified ? 'oauth' : 'oauth_provisional',
+    };
   }
 
   function logout(token) {
@@ -505,6 +561,7 @@ export function createStore(seed = null, options = {}) {
     register,
     login,
     demoAuth,
+    oauthUpsert,
     logout,
     getSessionUser,
     publicUser,

@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 
+import { apiAuthProviders, oauthStartPath, type AuthProviders } from '../lib/api';
 import { chipStyle, memberDot, press } from '../lib/styles';
 import { useApp } from '../store/AppStore';
 
-type Step = 'intro' | 'auth' | 'hive' | 'invite';
+type Step = 'gateway' | 'contact' | 'intro' | 'hive' | 'invite';
+type AuthProvider = 'apple' | 'google' | 'email' | 'phone';
 
 const SLIDES = [
   {
@@ -31,10 +33,10 @@ const PANE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'center',
-  padding: '40px 30px',
+  padding: '40px 28px',
   position: 'relative',
   zIndex: 2,
-  animation: 'cvrise .5s ease both',
+  animation: 'cvrise .5s var(--ease-out) both',
 };
 
 const KICKER: CSSProperties = {
@@ -46,12 +48,21 @@ const KICKER: CSSProperties = {
 };
 
 const CTA: CSSProperties = {
-  borderRadius: 18,
+  borderRadius: 'var(--r-md)',
   padding: 16,
   fontSize: 13.5,
 };
 
-/** Slow-drifting honeycomb behind every onboarding pane. */
+function looksLikeEmail(v: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+function looksLikePhone(v: string) {
+  const digits = v.replace(/\D/g, '');
+  return digits.length >= 8 && digits.length <= 15;
+}
+
+/** Soft drifting hex accents behind onboarding panes. */
 function HexField() {
   const hexes = useMemo(
     () =>
@@ -79,9 +90,31 @@ function HexField() {
   );
 }
 
+function GoogleMark() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+      <path
+        fill="#EA4335"
+        d="M9 7.2v3.5h4.9c-.2 1.2-1.5 3.5-4.9 3.5A5.4 5.4 0 1 1 9 3.6c1.5 0 2.6.7 3.2 1.2l2.2-2.1A8.3 8.3 0 1 0 9 17.3c4.8 0 8-3.4 8-8.1 0-.5 0-.9-.1-1.3H9z"
+      />
+    </svg>
+  );
+}
+
+function AppleMark() {
+  return (
+    <svg width="16" height="18" viewBox="0 0 16 18" aria-hidden>
+      <path
+        fill="currentColor"
+        d="M12.7 9.4c0-2.1 1.7-3.1 1.8-3.2-1-1.4-2.5-1.6-3-1.7-1.3-.1-2.5.8-3.1.8-.7 0-1.7-.7-2.8-.7C4 4.6 2.4 5.7 1.4 7.5c-1.9 3.3-.5 8.2 1.4 10.9.9 1.3 2 2.8 3.4 2.7 1.4 0 1.9-.9 3.5-.9s2.1.9 3.5.8c1.5 0 2.4-1.3 3.3-2.6 1-1.5 1.4-3 1.4-3.1-.1 0-2.7-1-2.7-4.2zM10.6 3.2c.7-.9 1.2-2.1 1.1-3.3-1 .1-2.3.7-3 1.6-.7.8-1.3 2-1.1 3.2 1.2.1 2.3-.6 3-1.5z"
+      />
+    </svg>
+  );
+}
+
 export function Onboarding() {
-  const { finishOnboarding, authenticate } = useApp();
-  const [step, setStep] = useState<Step>('intro');
+  const { finishOnboarding, authenticate, acceptAuthToken } = useApp();
+  const [step, setStep] = useState<Step>('gateway');
   const [slide, setSlide] = useState(0);
   const [hiveName, setHiveName] = useState('');
   const [hiveKind, setHiveKind] = useState(HIVE_KINDS[0]);
@@ -91,18 +124,94 @@ export function Onboarding() {
   ]);
   const [newInvite, setNewInvite] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
+  const [contact, setContact] = useState('');
+  const [contactError, setContactError] = useState('');
+  const [providers, setProviders] = useState<AuthProviders>({
+    google: false,
+    apple: false,
+    mode: 'demo',
+  });
+  const [authModeNote, setAuthModeNote] = useState<'demo' | 'oauth' | 'oauth_provisional'>('demo');
 
   const sl = SLIDES[slide] || SLIDES[0];
 
-  const continueWith = async (provider: 'apple' | 'google' | 'email') => {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const p = await apiAuthProviders();
+      if (!cancelled) setProviders(p);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // OAuth callback lands with ?token=&authed=1 — accept session and advance.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const authed = params.get('authed');
+    const mode = params.get('mode');
+    if (!token && authed !== '1') return;
+    let cancelled = false;
+    (async () => {
+      if (token) await acceptAuthToken(token);
+      if (cancelled) return;
+      if (mode === 'oauth' || mode === 'oauth_provisional') {
+        setAuthModeNote(mode);
+      } else if (providers.mode === 'oauth') {
+        setAuthModeNote('oauth');
+      }
+      setStep('intro');
+      params.delete('token');
+      params.delete('authed');
+      params.delete('mode');
+      const next = params.toString();
+      const clean = window.location.pathname + (next ? '?' + next : '') + window.location.hash;
+      window.history.replaceState({}, '', clean);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [acceptAuthToken, providers.mode]);
+
+  const continueDemo = async (provider: AuthProvider, opts?: { contact?: string }) => {
     if (authBusy) return;
     setAuthBusy(true);
     try {
-      await authenticate(provider);
-      setStep('hive');
+      await authenticate(provider, opts);
+      setAuthModeNote('demo');
+      setStep('intro');
     } finally {
       setAuthBusy(false);
     }
+  };
+
+  const continueWithSocial = async (provider: 'apple' | 'google') => {
+    if (authBusy) return;
+    const enabled = provider === 'google' ? providers.google : providers.apple;
+    if (enabled) {
+      setAuthBusy(true);
+      window.location.assign(oauthStartPath(provider));
+      return;
+    }
+    await continueDemo(provider);
+  };
+
+  const submitContact = async () => {
+    const raw = contact.trim();
+    if (!raw) {
+      setContactError('Enter an email or phone number to continue.');
+      return;
+    }
+    const asEmail = looksLikeEmail(raw);
+    const asPhone = looksLikePhone(raw);
+    if (!asEmail && !asPhone) {
+      setContactError('Use a valid email address or phone number.');
+      return;
+    }
+    setContactError('');
+    await continueDemo(asEmail ? 'email' : 'phone', { contact: raw });
   };
 
   const addInvite = () => {
@@ -126,6 +235,185 @@ export function Onboarding() {
       }}
     >
       <HexField />
+
+      {step === 'gateway' && (
+        <div className="gw-pane" style={{ ...PANE, justifyContent: 'flex-end', paddingBottom: 36 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 'auto', paddingTop: 8 }}>
+            <div
+              className="hex"
+              aria-hidden
+              style={{
+                width: 36,
+                height: 36,
+                background: 'var(--grad)',
+                boxShadow: 'var(--glow)',
+              }}
+            />
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span className="grot" style={{ fontWeight: 700, fontSize: 22, letterSpacing: '-.02em' }}>
+                Cohive
+              </span>
+              <span
+                style={{
+                  fontSize: 8.5,
+                  letterSpacing: '.28em',
+                  textTransform: 'uppercase',
+                  color: 'var(--soft)',
+                }}
+              >
+                by AurevonLabs
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => finishOnboarding()}
+              style={{
+                marginLeft: 'auto',
+                background: 'none',
+                border: 'none',
+                color: 'var(--soft)',
+                fontFamily: "'Outfit', system-ui, sans-serif",
+                fontSize: 13,
+                cursor: 'pointer',
+                padding: '8px 4px',
+              }}
+            >
+              Skip
+            </button>
+          </div>
+
+          <div className="grot" style={{ ...KICKER, marginBottom: 14 }}>
+            Begin
+          </div>
+          <h1
+            className="grot"
+            style={{
+              fontWeight: 700,
+              fontSize: 34,
+              lineHeight: 1.08,
+              letterSpacing: '-.03em',
+              margin: '0 0 12px',
+            }}
+          >
+            Your hive
+            <br />
+            starts here.
+          </h1>
+          <p style={{ color: 'var(--soft)', fontSize: 15, lineHeight: 1.55, margin: '0 0 28px', maxWidth: '34ch' }}>
+            Sign in to keep trips, homes, and dinners with the people you actually plan with.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }} role="group" aria-label="Sign in options">
+            <button
+              type="button"
+              className="press gw-btn gw-btn--google"
+              onClick={() => void continueWithSocial('google')}
+              disabled={authBusy}
+              aria-label="Continue with Google"
+            >
+              <GoogleMark />
+              Continue with Google
+            </button>
+            <button
+              type="button"
+              className="press gw-btn gw-btn--apple"
+              onClick={() => void continueWithSocial('apple')}
+              disabled={authBusy}
+              aria-label="Continue with Apple"
+            >
+              <AppleMark />
+              Continue with Apple
+            </button>
+            <button
+              type="button"
+              className="press gw-btn gw-btn--contact"
+              onClick={() => setStep('contact')}
+              disabled={authBusy}
+              aria-label="Start with email or phone number"
+            >
+              Start with email / phone
+            </button>
+          </div>
+
+          <p
+            style={{
+              fontSize: 11.5,
+              color: 'var(--soft)',
+              textAlign: 'center',
+              margin: '20px 0 0',
+              lineHeight: 1.45,
+            }}
+          >
+            {providers.mode === 'oauth'
+              ? 'Google and Apple connect through configured OAuth when available.'
+              : 'Demo session — continues into the app without provider keys.'}
+          </p>
+        </div>
+      )}
+
+      {step === 'contact' && (
+        <div style={PANE}>
+          <button
+            type="button"
+            onClick={() => setStep('gateway')}
+            style={{
+              alignSelf: 'flex-start',
+              background: 'none',
+              border: 'none',
+              color: 'var(--honey)',
+              fontFamily: "'Outfit', system-ui, sans-serif",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              padding: '0 0 18px',
+            }}
+          >
+            ← Back
+          </button>
+          <div className="grot" style={{ ...KICKER, marginBottom: 12 }}>
+            Email or phone
+          </div>
+          <h1 className="grot" style={{ fontWeight: 700, fontSize: 30, letterSpacing: '-.03em', margin: '0 0 10px' }}>
+            How should we
+            <br />
+            reach you?
+          </h1>
+          <p style={{ color: 'var(--soft)', fontSize: 14.5, lineHeight: 1.55, margin: '0 0 22px' }}>
+            We’ll use this to open your hive. No password needed for the demo path.
+          </p>
+          <label className="sr-only" htmlFor="gw-contact">
+            Email or phone number
+          </label>
+          <input
+            id="gw-contact"
+            value={contact}
+            onChange={(e) => {
+              setContact(e.target.value);
+              if (contactError) setContactError('');
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && void submitContact()}
+            placeholder="you@email.com or +1 555 0100"
+            autoComplete="username"
+            inputMode="email"
+            aria-invalid={Boolean(contactError)}
+            aria-describedby={contactError ? 'gw-contact-error' : undefined}
+          />
+          {contactError ? (
+            <p id="gw-contact-error" role="alert" style={{ color: '#F87171', fontSize: 12.5, margin: '10px 0 0' }}>
+              {contactError}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="press ctaBtn"
+            onClick={() => void submitContact()}
+            disabled={authBusy}
+            style={{ ...press(0.98), ...CTA, marginTop: 22, opacity: authBusy ? 0.7 : 1 }}
+          >
+            Continue
+          </button>
+        </div>
+      )}
 
       {step === 'intro' && (
         <div
@@ -151,6 +439,7 @@ export function Onboarding() {
               </span>
             </div>
             <button
+              type="button"
               onClick={() => finishOnboarding()}
               style={{
                 marginLeft: 'auto',
@@ -167,9 +456,24 @@ export function Onboarding() {
             </button>
           </div>
 
+          {authModeNote !== 'oauth' && (
+            <p
+              style={{
+                margin: '14px 0 0',
+                fontSize: 11,
+                color: 'var(--sky)',
+                letterSpacing: '.04em',
+              }}
+            >
+              {authModeNote === 'oauth_provisional'
+                ? 'Signed in via OAuth return (provisional session).'
+                : 'Signed in with a demo session — welcome.'}
+            </p>
+          )}
+
           <div
             key={slide}
-            style={{ marginTop: 'auto', animation: 'cvrise .55s cubic-bezier(.2,.9,.25,1.12) both' }}
+            style={{ marginTop: 'auto', animation: 'cvrise .55s var(--ease-spring) both' }}
           >
             <div className="grot" style={{ ...KICKER, marginBottom: 14 }}>
               {sl.kicker}
@@ -196,116 +500,25 @@ export function Onboarding() {
             {SLIDES.map((_, i) => (
               <div
                 key={i}
+                aria-hidden
                 style={{
                   width: i === slide ? 26 : 8,
                   height: 8,
                   borderRadius: 99,
                   background: i === slide ? 'var(--grad)' : 'var(--lineB)',
-                  transition: 'all .35s cubic-bezier(.2,.9,.25,1.2)',
+                  transition: 'all .35s var(--ease-spring)',
                 }}
               />
             ))}
             <button
+              type="button"
               className="press ctaBtn"
-              onClick={() => (slide < SLIDES.length - 1 ? setSlide((s) => s + 1) : setStep('auth'))}
+              onClick={() => (slide < SLIDES.length - 1 ? setSlide((s) => s + 1) : setStep('hive'))}
               style={{ ...press(0.96), marginLeft: 'auto', borderRadius: 99, padding: '15px 30px', fontSize: 13 }}
             >
               Continue
             </button>
           </div>
-        </div>
-      )}
-
-      {step === 'auth' && (
-        <div style={PANE}>
-          <div
-            className="hex"
-            aria-hidden
-            style={{
-              width: 56,
-              height: 56,
-              background: 'var(--grad)',
-              marginBottom: 22,
-              animation: 'cvpop .6s cubic-bezier(.2,.9,.3,1.3) both',
-            }}
-          />
-          <h1 className="grot" style={{ fontWeight: 700, fontSize: 32, letterSpacing: '-.03em', margin: '0 0 10px' }}>
-            Welcome to
-            <br />
-            the hive.
-          </h1>
-          <p style={{ color: 'var(--soft)', fontSize: 14.5, lineHeight: 1.55, margin: '0 0 30px' }}>
-            One account. Every plan you share — trips, homes, dinners — kept with the people you share them
-            with.
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-            <button
-              className="press grot"
-              onClick={() => void continueWith('apple')}
-              disabled={authBusy}
-              style={{
-                ...press(0.98),
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 9,
-                background: 'var(--ink)',
-                color: 'var(--bg)',
-                border: 'none',
-                borderRadius: 14,
-                padding: 15,
-                fontWeight: 600,
-                fontSize: 14.5,
-                cursor: 'pointer',
-                opacity: authBusy ? 0.7 : 1,
-              }}
-            >
-               Continue with Apple
-            </button>
-            <button
-              className="press grot"
-              onClick={() => void continueWith('google')}
-              disabled={authBusy}
-              style={{
-                ...press(0.98),
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 9,
-                background: 'var(--panelS)',
-                color: 'var(--ink)',
-                border: '1px solid var(--lineB)',
-                borderRadius: 14,
-                padding: 15,
-                fontWeight: 600,
-                fontSize: 14.5,
-                cursor: 'pointer',
-                opacity: authBusy ? 0.7 : 1,
-              }}
-            >
-              G&#8202; Continue with Google
-            </button>
-            <button
-              className="grot"
-              onClick={() => void continueWith('email')}
-              disabled={authBusy}
-              style={{
-                background: 'none',
-                color: 'var(--honey)',
-                border: 'none',
-                padding: 13,
-                fontWeight: 600,
-                fontSize: 13.5,
-                cursor: 'pointer',
-                opacity: authBusy ? 0.7 : 1,
-              }}
-            >
-              Continue with email
-            </button>
-          </div>
-          <p style={{ fontSize: 11, color: 'var(--soft)', textAlign: 'center', margin: '22px 0 0' }}>
-            Private by default. Your hive sees your picks — no one else does.
-          </p>
         </div>
       )}
 
@@ -332,6 +545,7 @@ export function Onboarding() {
             {HIVE_KINDS.map((k) => (
               <button
                 key={k}
+                type="button"
                 className="press"
                 onClick={() => setHiveKind(k)}
                 aria-pressed={hiveKind === k}
@@ -342,6 +556,7 @@ export function Onboarding() {
             ))}
           </div>
           <button
+            type="button"
             className="press ctaBtn"
             onClick={() => setStep('invite')}
             style={{ ...press(0.98), ...CTA }}
@@ -383,6 +598,7 @@ export function Onboarding() {
               style={{ flex: 1 }}
             />
             <button
+              type="button"
               className="grot"
               onClick={addInvite}
               aria-label="Add invitee"
@@ -390,7 +606,7 @@ export function Onboarding() {
                 background: 'var(--panelS)',
                 border: '1px solid var(--lineB)',
                 color: 'var(--honey)',
-                borderRadius: 12,
+                borderRadius: 'var(--r-sm)',
                 padding: '0 18px',
                 fontWeight: 700,
                 fontSize: 18,
@@ -401,6 +617,7 @@ export function Onboarding() {
             </button>
           </div>
           <button
+            type="button"
             className="press ctaBtn"
             onClick={() => finishOnboarding(hiveName)}
             style={{ ...press(0.98), ...CTA, marginTop: 28 }}
