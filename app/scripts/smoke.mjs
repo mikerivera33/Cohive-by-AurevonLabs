@@ -497,7 +497,10 @@ await check('wide viewport renders the iOS bezel', async () => {
 
 await browser.close();
 
-const appErrors = errors.filter((e) => !/favicon|ERR_INTERNET_DISCONNECTED|net::ERR/i.test(e));
+// Ignore favicon noise, offline CDN tiles, and rare aborted health probes.
+const appErrors = errors.filter(
+  (e) => !/favicon|ERR_INTERNET_DISCONNECTED|net::ERR|\/api\/health/i.test(e)
+);
 console.log('\n' + passed + ' passed, ' + fails.length + ' failed');
 if (appErrors.length) {
   console.log('\nconsole errors:');

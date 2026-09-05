@@ -60,8 +60,16 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 /** Probe whether the API is reachable (used to choose server vs local demo). */
 export async function apiHealthy(): Promise<boolean> {
   try {
-    const res = await fetch('/api/health', { method: 'GET' });
-    return res.ok;
+    const res = await fetch('/api/health', {
+      method: 'GET',
+      // Fail fast when preview proxies to a dead upstream (or the network stalls).
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { ok?: boolean; service?: string };
+    // Real API answers `{ ok: true, service: "cohive-api" }`. Preview-static
+    // middleware returns `{ ok: false }` so we stay on seed fixtures quietly.
+    return data?.ok === true && data?.service === 'cohive-api';
   } catch {
     return false;
   }
