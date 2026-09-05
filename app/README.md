@@ -140,9 +140,14 @@ listener counts, and exactly one live Leaflet map after churn.
 - **Crash safety**: a top-level error boundary (styled with raw values so it
   renders even if theming breaks) catches any render error — reload, never a
   white screen.
-- **CSP**: `index.html` ships a Content-Security-Policy locked to self, Google
-  Fonts, and Carto tiles; `object-src 'none'`, no-referrer, external links all
-  `rel="noreferrer"`. Applies inside the Capacitor webviews too.
+- **CSP**: `index.html` ships a Content-Security-Policy locked to self and
+  Carto tiles (fonts are self-hosted under `/fonts`); `object-src 'none'`,
+  no-referrer, external links all `rel="noreferrer"`. Applies inside the
+  Capacitor webviews too.
+- **API**: `server.mjs` (and the Netlify `/api/*` function) enforce auth +
+  membership ACL for trips, votes and members; import scanning is sanitized
+  on ingest and rate-limited per account/IP. Offline/demo still works against
+  seed fixtures when the API is unreachable.
 - **Storage**: everything read back from localStorage is validated (type,
   whitelist, length caps) before use — corrupted or hand-edited values fall
   back to defaults instead of propagating.
@@ -163,7 +168,7 @@ the app). Hive content is in-memory fixture data until a backend lands.
 
 ## Next engineering steps
 
-1. Real backend — port rhyme-plus `server.js` and add hive/member auth
+1. Durable DB behind the API (swap the in-memory store) + real OAuth for Apple/Google
 2. Live geocoding via Nominatim (cached and throttled, as in rhyme-plus `lib/geocode.js`)
 3. Real OAuth for the 21 account connections; the UI is wired, the handshake is not
 4. OpenTable/Resy deep-link booking behind the Annual entitlement

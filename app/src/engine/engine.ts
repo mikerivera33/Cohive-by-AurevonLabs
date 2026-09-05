@@ -6,6 +6,7 @@
  * the module shape and types are new. Tier-aware scoring (must/maybe/if-time) is the
  * Cohive extension on top.
  */
+import { sanitizeImportText } from '../lib/sanitize';
 import { gazetteer } from './seed';
 import type {
   Category,
@@ -196,21 +197,31 @@ export function planTrip(spots: Spot[], opts: PlanOpts): TripPlan {
   const active = spots.filter((s) => !s.skipped && s.category !== 'hotel');
   const clusters = clusterByDay(active, opts.days);
   const days: PlanDay[] = [];
-  let carry: Spot[] = [];
+  // Carry only ids between days so overflow Spot refs do not pin the full
+  // input array alive across long solve loops (stress / batch planning).
+  let carryIds: number[] = [];
+  const byId = new Map(active.map((s) => [s.id, s]));
 
   for (let i = 0; i < opts.days; i++) {
-    const pool = [...carry, ...(clusters[i] || [])];
-    carry = [];
-    const { overflow, ...day } = scheduleDay(pool, opts, i);
-    carry = overflow;
-    days.push(day);
+    const carried = carryIds.map((id) => byId.get(id)).filter((s): s is Spot => !!s);
+    const pool = carried.concat(clusters[i] || []);
+    const scheduled = scheduleDay(pool, opts, i);
+    carryIds = scheduled.overflow.map((s) => s.id);
+    days.push({
+      day: scheduled.day,
+      items: scheduled.items,
+      warnings: scheduled.warnings,
+      cost: scheduled.cost,
+    });
   }
+
+  const unplaced = carryIds.map((id) => byId.get(id)?.name).filter((n): n is string => !!n);
 
   return {
     days,
-    unplaced: carry.map((s) => s.name),
+    unplaced,
     totalCost: days.reduce((a, d) => a + d.cost, 0),
-    opts: { ...opts },
+    opts: { days: opts.days, pace: opts.pace, startHour: opts.startHour, endHour: opts.endHour },
     generatedAt: new Date().toISOString(),
   };
 }
@@ -280,31 +291,50 @@ function mkCandidate(
   };
 }
 
-export function scanImport(text: string, ctx: ScanContext): ScanResult {
+export function scanImport(rawText: string, ctx: ScanContext): ScanResult {
+  // Sanitize on ingest — strip markup / dangerous schemes before any matching.
+  const text = sanitizeImportText(rawText);
   const source = detectSource(text);
   const lower = text.toLowerCase();
   const out: ScanCandidate[] = [];
+  // Short category probe string — avoid retaining the full paste in candidates.
+  const catProbe = text.slice(0, 280);
 
   for (const g of gazetteer) {
-    if (lower.includes(g.name.toLowerCase())) out.push({ ...g, confidence: 97, matched: 'exact' });
+    if (lower.includes(g.name.toLowerCase())) {
+      out.push({
+        name: g.name,
+        category: g.category,
+        lat: g.lat,
+        lng: g.lng,
+        duration: g.duration,
+        cost: g.cost,
+        open: g.open,
+        close: g.close,
+        city: g.city,
+        confidence: 97,
+        matched: 'exact',
+      });
+    }
   }
 
   if (!out.length) {
     const stop =
       /^(The|You|We|My|Our|This|That|Have|Just|And|But|For|With|From|Watch|Check|Trust|Me|Best|Top|Day|POV|OMG|If|So|It|Go|Get|New|Here|Hidden|Gems?)$/i;
     const seen = new Set<string>();
-    const phrases = [
-      ...text
-        .replace(/https?:\/\/\S+/g, ' ')
-        .matchAll(/([A-Z][\w’'&-]+(?:\s+[A-Z][\w’'&-]+){0,3})/g),
-    ]
-      .map((m) => m[1].trim())
-      .filter(
-        (p) => p.length > 3 && !stop.test(p) && !seen.has(p.toLowerCase()) && seen.add(p.toLowerCase())
-      );
-    for (const p of phrases.slice(0, 3)) {
+    const stripped = text.replace(/https?:\/\/\S+/g, ' ');
+    const phrases: string[] = [];
+    for (const m of stripped.matchAll(/([A-Z][\w’'&-]+(?:\s+[A-Z][\w’'&-]+){0,3})/g)) {
+      const p = m[1].trim();
+      if (p.length > 3 && !stop.test(p) && !seen.has(p.toLowerCase())) {
+        seen.add(p.toLowerCase());
+        phrases.push(p);
+        if (phrases.length >= 3) break;
+      }
+    }
+    for (const p of phrases) {
       const kw = CATS.some(([re]) => re.test(p));
-      out.push(mkCandidate(p, text, ctx, kw ? 84 : 68));
+      out.push(mkCandidate(p, catProbe, ctx, kw ? 84 : 68));
     }
   }
 
@@ -317,13 +347,13 @@ export function scanImport(text: string, ctx: ScanContext): ScanResult {
       .trim();
     if (words && !/^\d+$/.test(words) && words.length > 3) {
       const name = words.replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 48);
-      out.push(mkCandidate(name, text, ctx, 61));
+      out.push(mkCandidate(name, catProbe, ctx, 61));
     }
   }
 
   if (!out.length) {
     out.push({
-      ...mkCandidate('Concierge pick — ' + (ctx.city || 'nearby'), text, ctx, 55),
+      ...mkCandidate('Concierge pick — ' + (ctx.city || 'nearby'), catProbe, ctx, 55),
       matched: 'assist',
     });
   }

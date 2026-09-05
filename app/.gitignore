@@ -3,6 +3,7 @@ dist/
 .DS_Store
 *.local
 .vite/
+server/engine-bundle.mjs
 
 # Capacitor native build outputs (the projects themselves are committed;
 # each platform dir carries its own .gitignore for build artifacts)
