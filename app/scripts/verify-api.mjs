@@ -106,10 +106,11 @@ await aok('outsider cannot read trip', async () => {
     name: 'Out',
     password: 'password1',
   });
-  // Fresh store attaches every new user to the seed trip — carve an outsider
-  // by creating a second trip owner and removing them is awkward; instead
-  // register then vote on a fabricated trip id.
+  assert.equal(b.status, 201);
   tokenB = b.data.token;
+  // Register must NOT auto-join the demo seed trip — ACL boundary.
+  const seedDenied = await req('GET', `/api/trips/${tripId}`, undefined, tokenB);
+  assert.equal(seedDenied.status, 403);
   const denied = await req('GET', '/api/trips/does-not-exist', undefined, tokenB);
   assert.equal(denied.status, 404);
 });
@@ -185,6 +186,116 @@ await aok('scan is rate-limited per account', async () => {
 await aok('unauthenticated scan rejected', async () => {
   const res = await req('POST', `/api/trips/${tripId}/scan`, { text: 'hello' });
   assert.equal(res.status, 401);
+});
+
+
+console.log('\nabuse-surface guards');
+await aok('rejects prototype-pollution keys in JSON body', async () => {
+  const res = await api.handle(
+    new Request('http://test/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"email":"x@y.z","password":"password1","__proto__":{"admin":true}}',
+    })
+  );
+  assert.equal(res.status, 400);
+  const data = await res.json();
+  assert.equal(data.error, 'dangerous_keys');
+});
+
+await aok('rejects oversized JSON bodies', async () => {
+  const res = await api.handle(
+    new Request('http://test/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"x":"' + 'a'.repeat(70_000) + '"}',
+    })
+  );
+  assert.equal(res.status, 413);
+});
+
+await aok('auth endpoints are IP rate-limited', async () => {
+  resetRateLimits();
+  let limited = false;
+  for (let i = 0; i < 25; i++) {
+    const res = await req('POST', '/api/auth/login', {
+      email: 'nobody@cohive.test',
+      password: 'wrong-password',
+    });
+    if (res.status === 429) {
+      limited = true;
+      assert.equal(res.data.error, 'rate_limited');
+      break;
+    }
+  }
+  assert.ok(limited, 'expected auth 429 within 25 attempts');
+});
+
+await aok('addSpot clamps poisoned coordinates', async () => {
+  resetRateLimits();
+  const res = await req(
+    'POST',
+    `/api/trips/${tripId}/spots`,
+    {
+      candidate: {
+        name: 'Poison Pier',
+        lat: Number.POSITIVE_INFINITY,
+        lng: Number.NaN,
+        duration: Number.POSITIVE_INFINITY,
+        cost: Number.NaN,
+        category: '__proto__',
+      },
+      source: 'fuzz',
+    },
+    tokenA
+  );
+  assert.equal(res.status, 201);
+  assert.equal(res.data.spot.lat, 0);
+  assert.equal(res.data.spot.lng, 0);
+  assert.equal(res.data.spot.category, 'sight');
+  assert.ok(Number.isFinite(res.data.spot.duration));
+  assert.ok(Number.isFinite(res.data.spot.cost));
+});
+
+await aok('register does not auto-join seed trip (ACL)', async () => {
+  resetRateLimits();
+  const reg = await req('POST', '/api/auth/register', {
+    email: 'solo@cohive.test',
+    name: 'Solo',
+    password: 'password1',
+  });
+  assert.equal(reg.status, 201);
+  const trips = await req('GET', '/api/trips', undefined, reg.data.token);
+  assert.equal(trips.status, 200);
+  assert.equal(trips.data.trips.length, 0);
+});
+
+await aok('file-backed store survives reload', async () => {
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { loadSnapshot } = await import('../server/persist.mjs');
+  const dir = await mkdtemp(join(tmpdir(), 'cohive-store-'));
+  const path = join(dir, 'store.json');
+  try {
+    const s1 = createStore(seed, { persistPath: path });
+    const demo = s1.demoAuth({ provider: 'email', name: 'Persist' });
+    assert.ok(demo.token);
+    s1.castVote('1', demo.user.id, 1, 'maybe');
+    await s1.flush();
+    const s2 = createStore(seed, { persistPath: path });
+    const snap = await loadSnapshot(path);
+    s2.hydrate(snap);
+    const user = s2.getSessionUser(demo.token);
+    assert.ok(user);
+    assert.equal(user.name, 'Persist');
+    const trip = s2.getTrip('1', user.id);
+    assert.ok(!trip.error);
+    const spot = trip.spots.find((x) => x.id === 1);
+    assert.equal(spot.tier, 'maybe');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 console.log(`\nverify:api — ${passed} checks passed`);

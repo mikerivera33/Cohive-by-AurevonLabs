@@ -147,7 +147,9 @@ listener counts, and exactly one live Leaflet map after churn.
 - **API**: `server.mjs` (and the Netlify `/api/*` function) enforce auth +
   membership ACL for trips, votes and members; import scanning is sanitized
   on ingest and rate-limited per account/IP. Offline/demo still works against
-  seed fixtures when the API is unreachable.
+  seed fixtures when the API is unreachable. Node hosts persist to
+  `data/cohive-store.json` (override with `COHIVE_DATA_FILE`); Netlify
+  Functions stay memory-only unless a durable backend is wired.
 - **Storage**: everything read back from localStorage is validated (type,
   whitelist, length caps) before use — corrupted or hand-edited values fall
   back to defaults instead of propagating.
@@ -162,13 +164,14 @@ listener counts, and exactly one live Leaflet map after churn.
 
 ## What's persisted
 
-Theme, onboarding completion, plan tier, referral code and linked accounts survive a
-reload via `localStorage` (all reads and writes are guarded — losing storage never breaks
-the app). Hive content is in-memory fixture data until a backend lands.
+Theme, onboarding completion, plan tier, referral code, linked accounts, and the
+API session token survive a reload via `localStorage` (validated reads). Hive
+content for the demo stays in-memory on the client; when `/api` is live, trips /
+votes / members are server-authoritative and file-backed on Node hosts.
 
 ## Next engineering steps
 
-1. Durable DB behind the API (swap the in-memory store) + real OAuth for Apple/Google
+1. Durable multi-instance DB (Postgres / Netlify DB) + real OAuth for Apple/Google
 2. Live geocoding via Nominatim (cached and throttled, as in rhyme-plus `lib/geocode.js`)
 3. Real OAuth for the 21 account connections; the UI is wired, the handshake is not
 4. OpenTable/Resy deep-link booking behind the Annual entitlement

@@ -2,7 +2,7 @@
  * Thin client for the Cohive API. Returns null / throws ApiError on failure.
  * Session token is persisted via the validated storage helpers.
  */
-import { isShortString, load, save } from './storage';
+import { isSessionToken, load, save } from './storage';
 import type { Member, ScanCandidate, ScanResult, Spot, Tier } from '../types';
 
 const TOKEN_KEY = 'apiToken';
@@ -18,7 +18,7 @@ export class ApiError extends Error {
 }
 
 export function getApiToken(): string {
-  return load(TOKEN_KEY, '', isShortString);
+  return load(TOKEN_KEY, '', isSessionToken);
 }
 
 export function setApiToken(token: string): void {

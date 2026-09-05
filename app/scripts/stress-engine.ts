@@ -234,4 +234,64 @@ ok('3000 consecutive scanImport calls do not retain heap', () => {
   assert.ok(delta < 15, `heap grew ${delta.toFixed(1)} MB over 3000 scans`);
 });
 
+
+/* ── adversarial clamps ─────────────────────────────────────────── */
+console.log('\nadversarial clamps');
+ok('poisoned coordinates never yield NaN distances or plan fields', () => {
+  const poisoned: Spot[] = [
+    {
+      id: 1,
+      name: 'NaN Island',
+      category: 'sight',
+      lat: Number.NaN,
+      lng: Number.POSITIVE_INFINITY,
+      duration: Number.POSITIVE_INFINITY,
+      cost: Number.NaN,
+      rating: 3,
+      open: null,
+      close: null,
+      source: 'fuzz',
+      tier: 'must',
+      votes: 1,
+      note: '',
+    },
+    {
+      id: 2,
+      name: 'Pole',
+      category: 'nature',
+      lat: 999,
+      lng: -999,
+      duration: -5,
+      cost: -1,
+      rating: 2,
+      open: null,
+      close: null,
+      source: 'fuzz',
+      tier: null,
+      votes: 0,
+      note: '',
+    },
+  ];
+  const plan = planTrip(poisoned, { days: 99 as never, pace: 'balanced', startHour: 9, endHour: 21 });
+  assert.equal(plan.days.length, 14);
+  for (const d of plan.days) {
+    for (const it of d.items) {
+      if (it.type !== 'visit') continue;
+      assert.ok(Number.isFinite(it.lat) && Number.isFinite(it.lng), 'visit coords');
+      assert.ok(Number.isFinite(it.cost), 'visit cost');
+    }
+  }
+  const scan = scanImport('<script>__proto__</script> javascript:alert(1) Tokyo Tower', {
+    city: 'Tokyo',
+    lat: Number.NaN,
+    lng: Number.POSITIVE_INFINITY,
+  });
+  assert.ok(scan.candidates.length >= 1);
+  for (const c of scan.candidates) {
+    assert.ok(Number.isFinite(c.lat) && c.lat >= -90 && c.lat <= 90);
+    assert.ok(Number.isFinite(c.lng) && c.lng >= -180 && c.lng <= 180);
+  }
+});
+
+
 console.log(`\n${checks} stress checks passed.\n`);

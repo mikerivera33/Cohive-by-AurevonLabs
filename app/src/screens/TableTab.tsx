@@ -157,7 +157,7 @@ export function TableTab() {
                   '&find_loc=New+York'
                 }
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="ghostBtn"
                 style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 10, padding: '7px 12px', letterSpacing: '.05em' }}
               >
@@ -166,7 +166,7 @@ export function TableTab() {
               <a
                 href={'https://www.google.com/maps/search/' + encodeURIComponent(t.name + ' ' + t.hood + ' NYC')}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="ghostBtn"
                 style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 10, padding: '7px 12px', letterSpacing: '.05em' }}
               >

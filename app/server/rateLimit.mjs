@@ -6,6 +6,27 @@
 /** @typedef {{ timestamps: number[] }} Bucket */
 
 const buckets = new Map();
+const MAX_BUCKETS = 10_000;
+
+/**
+ * Drop empty / stale buckets so an IP flood cannot grow the Map without bound.
+ */
+function pruneBuckets(now, windowMs) {
+  if (buckets.size < MAX_BUCKETS) return;
+  for (const [key, bucket] of buckets) {
+    bucket.timestamps = bucket.timestamps.filter((t) => now - t < windowMs);
+    if (!bucket.timestamps.length) buckets.delete(key);
+  }
+  // Hard ceiling — evict arbitrary oldest-ish entries if still over.
+  if (buckets.size >= MAX_BUCKETS) {
+    const overflow = buckets.size - Math.floor(MAX_BUCKETS * 0.8);
+    let i = 0;
+    for (const key of buckets.keys()) {
+      buckets.delete(key);
+      if (++i >= overflow) break;
+    }
+  }
+}
 
 /**
  * @param {string} key
@@ -14,6 +35,7 @@ const buckets = new Map();
  */
 export function takeToken(key, { limit, windowMs }) {
   const now = Date.now();
+  pruneBuckets(now, windowMs);
   let bucket = buckets.get(key);
   if (!bucket) {
     bucket = { timestamps: [] };

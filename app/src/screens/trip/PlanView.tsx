@@ -309,7 +309,7 @@ export function PlanView() {
                 <a
                   href={mapsUrl(d)}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="grot"
                   style={{
                     display: 'inline-block',

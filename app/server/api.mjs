@@ -9,13 +9,17 @@ import { createStore } from './store.mjs';
 import { seed } from './seed.mjs';
 import { sanitizeImportText } from './sanitize.mjs';
 import { takeToken } from './rateLimit.mjs';
+import { MAX_JSON_BODY_BYTES, parseJsonBody } from './safeJson.mjs';
 import { scanImport as defaultScanImport } from './engine-bundle.mjs';
 
 const SCAN_LIMIT_USER = { limit: 30, windowMs: 60_000 };
 const SCAN_LIMIT_IP = { limit: 60, windowMs: 60_000 };
+const AUTH_LIMIT_IP = { limit: 20, windowMs: 60_000 };
+
+const CORS_ORIGIN = process.env.COHIVE_CORS_ORIGIN || '*';
 
 const CORS = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': CORS_ORIGIN,
   'Access-Control-Allow-Headers': 'Authorization, Content-Type',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
@@ -60,28 +64,46 @@ export function createApi(deps = {}) {
     const path = pathname.replace(/\/+$/, '') || '/';
     let body = {};
     if (bodyText && method !== 'GET' && method !== 'HEAD') {
-      try {
-        body = JSON.parse(bodyText);
-      } catch {
-        return json(400, { error: 'invalid_json' });
+      const parsed = parseJsonBody(bodyText);
+      if (!parsed.ok) {
+        return json(parsed.error === 'body_too_large' ? 413 : 400, { error: parsed.error });
       }
+      body = parsed.value;
     }
 
     const token = bearer(headers);
     const user = store.getSessionUser(token);
 
+    function rateLimitAuth() {
+      const lim = takeToken(`auth:ip:${ip}`, AUTH_LIMIT_IP);
+      if (!lim.ok) {
+        return json(
+          429,
+          { error: 'rate_limited', scope: 'ip', retryAfterSec: lim.retryAfterSec },
+          { 'Retry-After': String(lim.retryAfterSec) }
+        );
+      }
+      return null;
+    }
+
     // ── Auth ──────────────────────────────────────────────────
     if (method === 'POST' && path === '/api/auth/register') {
+      const limited = rateLimitAuth();
+      if (limited) return limited;
       const result = store.register(body);
       if (result.error) return json(result.status, { error: result.error });
       return json(201, result);
     }
     if (method === 'POST' && path === '/api/auth/login') {
+      const limited = rateLimitAuth();
+      if (limited) return limited;
       const result = store.login(body);
       if (result.error) return json(result.status, { error: result.error });
       return json(200, result);
     }
     if (method === 'POST' && path === '/api/auth/demo') {
+      const limited = rateLimitAuth();
+      if (limited) return limited;
       const result = store.demoAuth(body);
       if (result.error) return json(result.status, { error: result.error });
       return json(201, result);
@@ -223,7 +245,16 @@ export function createApi(deps = {}) {
         return false;
       }
       const chunks = [];
-      for await (const c of req) chunks.push(c);
+      let size = 0;
+      for await (const c of req) {
+        size += c.length;
+        if (size > MAX_JSON_BODY_BYTES) {
+          res.writeHead(413, { 'Content-Type': 'application/json', ...CORS });
+          res.end(JSON.stringify({ error: 'body_too_large' }));
+          return true;
+        }
+        chunks.push(c);
+      }
       const bodyText = Buffer.concat(chunks).toString('utf8');
       const headers = {
         get: (k) => req.headers[k.toLowerCase()],
