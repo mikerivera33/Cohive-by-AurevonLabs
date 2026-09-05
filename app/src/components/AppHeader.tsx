@@ -10,14 +10,24 @@ export function AppHeader() {
         display: 'flex',
         alignItems: 'center',
         gap: 10,
-        padding: 'var(--safe-top, 42px) 18px 10px',
-        borderBottom: '1px solid var(--line)',
-        background: 'var(--bg)',
+        padding: 'var(--safe-top, 42px) 18px 12px',
+        borderBottom: '1px solid transparent',
+        background: 'linear-gradient(180deg, var(--bg) 55%, transparent)',
         position: 'relative',
         zIndex: 5,
       }}
     >
-      <div className="hex" aria-hidden style={{ width: 24, height: 24, background: 'var(--grad)' }} />
+      <div
+        className="hex"
+        aria-hidden
+        style={{
+          width: 24,
+          height: 24,
+          background: 'var(--grad)',
+          boxShadow: 'var(--glow)',
+          animation: 'cvglow 4.5s ease-in-out infinite',
+        }}
+      />
       <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
         <span className="grot" style={{ fontWeight: 700, fontSize: 17, letterSpacing: '-.02em' }}>
           Cohive
@@ -45,7 +55,9 @@ export function AppHeader() {
           color: 'var(--honey)',
           border: '1px solid var(--lineB)',
           borderRadius: 99,
-          padding: '4px 10px',
+          padding: '5px 11px',
+          background: 'var(--panel)',
+          backdropFilter: 'blur(10px)',
         }}
       >
         {planTier}
@@ -56,11 +68,12 @@ export function AppHeader() {
         aria-label="Toggle theme"
         style={{
           ...press(0.92),
-          width: 32,
-          height: 32,
+          width: 34,
+          height: 34,
           borderRadius: 99,
           border: '1px solid var(--lineB)',
-          background: 'var(--panelS)',
+          background: 'var(--panel)',
+          backdropFilter: 'blur(10px)',
           cursor: 'pointer',
           display: 'grid',
           placeItems: 'center',

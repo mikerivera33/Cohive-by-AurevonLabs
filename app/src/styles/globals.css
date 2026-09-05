@@ -1,5 +1,4 @@
-/* Cohive design system.
-   Token values are carried over verbatim from the Claude Design prototype. */
+/* Cohive design system — AurevonLabs blue, fluid surfaces, polished motion. */
 
 :root {
   color-scheme: dark;
@@ -17,9 +16,10 @@ body {
 body {
   margin: 0;
   background:
-    radial-gradient(900px 500px at 80% -10%, rgba(226, 105, 27, 0.14), transparent 60%),
-    radial-gradient(1000px 600px at 10% 10%, rgba(245, 165, 36, 0.07), transparent 55%),
-    #0a0e18;
+    radial-gradient(920px 520px at 82% -8%, rgba(78, 180, 255, 0.18), transparent 58%),
+    radial-gradient(1100px 640px at 8% 12%, rgba(27, 79, 216, 0.22), transparent 55%),
+    radial-gradient(700px 480px at 50% 100%, rgba(143, 208, 255, 0.08), transparent 50%),
+    #060b18;
   font-family: 'Outfit', system-ui, -apple-system, sans-serif;
   overscroll-behavior: none;
 }
@@ -29,52 +29,63 @@ body {
 }
 
 a {
-  color: #f5a524;
+  color: #4eb4ff;
   text-decoration: none;
 }
 a:hover {
-  color: #f6b93b;
+  color: #8fd0ff;
   text-decoration: underline;
 }
 
 /* ── Theme tokens ─────────────────────────────────────────────── */
+/*
+  Accent lineage from AurevonLabs mark: bright azure → deep royal.
+  --honey kept as the primary accent token name (widely referenced).
+  --sky is the lighter inviting complementary blue.
+*/
 
 .cv {
-  --bg: #0a0f1c;
-  --bg2: #0e1626;
-  --panel: rgba(20, 28, 48, 0.72);
-  --panelS: #131c30;
-  --line: rgba(160, 170, 200, 0.14);
-  --lineB: rgba(160, 170, 200, 0.3);
-  --ink: #edeff6;
-  --soft: #8e97ab;
-  --honey: #f5a524;
-  --grad: linear-gradient(120deg, #f6b93b, #e2691b);
-  --onGrad: #241303;
+  --bg: #060b18;
+  --bg2: #0c1528;
+  --panel: rgba(14, 28, 56, 0.55);
+  --panelS: #101c36;
+  --line: rgba(160, 190, 230, 0.12);
+  --lineB: rgba(160, 190, 230, 0.26);
+  --ink: #edf2fa;
+  --soft: #8b98b0;
+  --honey: #4eb4ff;
+  --sky: #8fd0ff;
+  --grad: linear-gradient(125deg, #6ec4ff 0%, #3b9eff 42%, #1b4fd8 100%);
+  --onGrad: #041018;
   --mint: #34d399;
   --violet: #a78bfa;
   --pink: #f472b6;
   --amber: #fbbf24;
-  --glow: 0 0 22px rgba(245, 165, 36, 0.22);
-  --shadow: 0 10px 34px rgba(2, 6, 16, 0.5);
+  --glow: 0 0 28px rgba(78, 180, 255, 0.28);
+  --shadow: 0 18px 48px rgba(2, 8, 24, 0.45);
+  --r-sm: 14px;
+  --r-md: 22px;
+  --r-lg: 28px;
+  --ease-out: cubic-bezier(0.22, 0.9, 0.28, 1);
+  --ease-spring: cubic-bezier(0.2, 0.85, 0.25, 1.15);
 }
 
 .cv.light {
-  --bg: #faf6ee;
-  --bg2: #f1eadb;
-  --panel: rgba(255, 253, 247, 0.88);
-  --panelS: #fffdf7;
-  --line: rgba(90, 70, 30, 0.12);
-  --lineB: rgba(90, 70, 30, 0.26);
-  --ink: #241c10;
-  /* Darkened from the prototype's #7A7261/#D97615 to clear WCAG AA (4.5:1)
-     as text on the cream background; hue and warmth preserved. */
-  --soft: #6e6754;
-  --honey: #a85206;
-  --grad: linear-gradient(120deg, #e2891b, #c75b10);
-  --onGrad: #fff7e8;
-  --glow: 0 0 18px rgba(217, 118, 21, 0.22);
-  --shadow: 0 10px 30px rgba(120, 80, 20, 0.14);
+  --bg: #eef5fc;
+  --bg2: #e0ebf7;
+  --panel: rgba(255, 255, 255, 0.72);
+  --panelS: #f7fbff;
+  --line: rgba(30, 70, 130, 0.1);
+  --lineB: rgba(30, 70, 130, 0.22);
+  --ink: #0c1a2e;
+  /* Softened cool slate — ≥4.5:1 on #EEF5FC for WCAG AA body text. */
+  --soft: #45566e;
+  --honey: #1657b8;
+  --sky: #3b9eff;
+  --grad: linear-gradient(125deg, #4eb4ff 0%, #2f7fe8 48%, #1b4fd8 100%);
+  --onGrad: #f4f9ff;
+  --glow: 0 0 22px rgba(59, 158, 255, 0.28);
+  --shadow: 0 16px 40px rgba(40, 90, 160, 0.12);
 }
 
 /* ── Form controls ────────────────────────────────────────────── */
@@ -87,13 +98,14 @@ a:hover {
   color: var(--ink);
   background: var(--bg2);
   border: 1px solid var(--lineB);
-  border-radius: 12px;
+  border-radius: var(--r-sm);
   padding: 12px 14px;
   width: 100%;
   box-sizing: border-box;
   transition:
-    border-color 0.2s,
-    box-shadow 0.2s;
+    border-color 0.25s var(--ease-out),
+    box-shadow 0.25s var(--ease-out),
+    background 0.25s var(--ease-out);
 }
 
 .cv input:focus,
@@ -101,7 +113,13 @@ a:hover {
 .cv select:focus {
   outline: none;
   border-color: var(--honey);
-  box-shadow: 0 0 0 3px rgba(245, 165, 36, 0.18);
+  box-shadow: 0 0 0 3px rgba(78, 180, 255, 0.22);
+}
+
+.cv.light input:focus,
+.cv.light textarea:focus,
+.cv.light select:focus {
+  box-shadow: 0 0 0 3px rgba(22, 87, 184, 0.18);
 }
 
 .cv ::placeholder {
@@ -117,25 +135,94 @@ a:hover {
   scrollbar-width: none;
 }
 
+/* ── Atmospheric mesh (lives behind content) ──────────────────── */
+
+.cv-atmosphere {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.cv-atmosphere::before,
+.cv-atmosphere::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(48px);
+  will-change: transform, opacity;
+}
+
+.cv-atmosphere::before {
+  width: 72%;
+  height: 48%;
+  top: -12%;
+  right: -18%;
+  background: radial-gradient(circle, rgba(78, 180, 255, 0.32), transparent 68%);
+  animation: cvmesh 18s var(--ease-out) infinite alternate;
+}
+
+.cv-atmosphere::after {
+  width: 68%;
+  height: 52%;
+  bottom: -16%;
+  left: -20%;
+  background: radial-gradient(circle, rgba(27, 79, 216, 0.36), transparent 70%);
+  animation: cvmesh 22s var(--ease-out) -6s infinite alternate-reverse;
+}
+
+.cv.light .cv-atmosphere::before {
+  background: radial-gradient(circle, rgba(143, 208, 255, 0.55), transparent 68%);
+}
+
+.cv.light .cv-atmosphere::after {
+  background: radial-gradient(circle, rgba(59, 158, 255, 0.28), transparent 70%);
+}
+
+.cv-atmosphere__orb {
+  position: absolute;
+  width: 42%;
+  height: 34%;
+  top: 36%;
+  left: 28%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(143, 208, 255, 0.14), transparent 70%);
+  filter: blur(40px);
+  animation: cvorb 14s ease-in-out infinite;
+}
+
+.cv.light .cv-atmosphere__orb {
+  background: radial-gradient(circle, rgba(78, 180, 255, 0.22), transparent 70%);
+}
+
 /* ── Motion ───────────────────────────────────────────────────── */
 
 @keyframes cvrise {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(18px) scale(0.985);
   }
   to {
     opacity: 1;
     transform: none;
   }
 }
+@keyframes cvfade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 @keyframes cvpop {
   0% {
-    transform: scale(0.6);
+    transform: scale(0.72);
     opacity: 0;
   }
   70% {
-    transform: scale(1.08);
+    transform: scale(1.04);
   }
   100% {
     transform: scale(1);
@@ -148,16 +235,25 @@ a:hover {
     transform: translateY(0) rotate(0deg);
   }
   50% {
-    transform: translateY(-16px) rotate(8deg);
+    transform: translateY(-18px) rotate(6deg);
   }
 }
 @keyframes cvpulse {
   0%,
   100% {
-    opacity: 0.5;
+    opacity: 0.45;
   }
   50% {
     opacity: 1;
+  }
+}
+@keyframes cvglow {
+  0%,
+  100% {
+    box-shadow: 0 0 16px rgba(78, 180, 255, 0.18);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(78, 180, 255, 0.36);
   }
 }
 @keyframes cvslide {
@@ -182,21 +278,62 @@ a:hover {
     transform: translateX(240%);
   }
 }
+@keyframes cvmesh {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(-4%, 5%, 0) scale(1.08);
+  }
+}
+@keyframes cvorb {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate3d(8%, -6%, 0) scale(1.12);
+    opacity: 1;
+  }
+}
+@keyframes cvtab {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 /* Scroll-driven reveal — `in` is added by the IntersectionObserver in useReveal. */
 .rv {
   opacity: 0;
-  transform: translateY(16px);
+  transform: translateY(18px) scale(0.985);
   transition:
-    opacity 0.5s ease,
-    transform 0.6s cubic-bezier(0.2, 0.8, 0.25, 1.12);
+    opacity 0.55s var(--ease-out),
+    transform 0.7s var(--ease-spring);
 }
 .rv.in {
   opacity: 1;
   transform: none;
 }
 
+.tabPane {
+  animation: cvtab 0.42s var(--ease-spring) both;
+}
+
 /* Press feedback — the prototype's `style-active` attribute. */
+.press {
+  transition:
+    transform 0.2s var(--ease-out),
+    box-shadow 0.25s var(--ease-out),
+    background 0.25s var(--ease-out),
+    color 0.2s var(--ease-out),
+    border-color 0.2s var(--ease-out);
+}
 .press:active {
   transform: scale(var(--press, 0.96));
 }
@@ -213,6 +350,11 @@ a:hover {
     opacity: 1;
     transform: none;
   }
+  .cv-atmosphere::before,
+  .cv-atmosphere::after,
+  .cv-atmosphere__orb {
+    animation: none !important;
+  }
 }
 
 /* ── Leaflet ──────────────────────────────────────────────────── */
@@ -226,6 +368,7 @@ a:hover {
   background: var(--panelS);
   color: var(--ink);
   box-shadow: var(--shadow);
+  border-radius: var(--r-sm);
 }
 .leaflet-popup-content {
   font-family: 'Space Grotesk', system-ui, sans-serif;
@@ -248,7 +391,7 @@ a:hover {
   font-family: 'Space Grotesk', system-ui, sans-serif;
 }
 
-/* Amber gradient clipped to text. */
+/* Accent gradient clipped to text. */
 .gradText {
   background: var(--grad);
   -webkit-background-clip: text;
@@ -267,7 +410,7 @@ a:hover {
   padding-bottom: 8px;
 }
 
-/* Filled amber call-to-action. */
+/* Filled azure call-to-action. */
 .ctaBtn {
   background: var(--grad);
   color: var(--onGrad);
@@ -278,6 +421,14 @@ a:hover {
   text-transform: uppercase;
   cursor: pointer;
   box-shadow: var(--glow);
+  border-radius: var(--r-sm);
+  transition:
+    transform 0.2s var(--ease-out),
+    box-shadow 0.25s var(--ease-out),
+    filter 0.2s var(--ease-out);
+}
+.ctaBtn:hover {
+  filter: brightness(1.06);
 }
 
 /* Outlined secondary action. */
@@ -285,7 +436,7 @@ a:hover {
   background: none;
   border: 1px solid var(--lineB);
   color: var(--ink);
-  border-radius: 11px;
+  border-radius: var(--r-sm);
   padding: 9px 14px;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-weight: 600;
@@ -293,14 +444,24 @@ a:hover {
   letter-spacing: 0.07em;
   text-transform: uppercase;
   cursor: pointer;
+  transition:
+    border-color 0.2s var(--ease-out),
+    background 0.2s var(--ease-out),
+    color 0.2s var(--ease-out);
+}
+.ghostBtn:hover {
+  border-color: var(--honey);
+  color: var(--honey);
 }
 
-/* The glass panel used by cards and the tab bar. */
+/* Soft glass surface — used where interaction needs a container. */
 .panelCard {
   background: var(--panel);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
   border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
 }
 
 /* Settings-style row with a hairline underneath. */
@@ -326,3 +487,97 @@ a:hover {
   font-weight: 600;
   font-size: 13px;
 }
+
+/* Soft media / map frames */
+.softFrame {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+/* Visually hidden — keep for screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Onboarding gateway (beginning sign-in) ───────────────────── */
+
+.gw-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  border-radius: var(--r-md);
+  padding: 15px 18px;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 14.5px;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  border: none;
+  transition:
+    transform 0.2s var(--ease-out),
+    box-shadow 0.25s var(--ease-out),
+    background 0.25s var(--ease-out),
+    border-color 0.2s var(--ease-out),
+    opacity 0.2s var(--ease-out);
+}
+
+.gw-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.gw-btn--google {
+  background: rgba(255, 255, 255, 0.96);
+  color: #1a2333;
+  box-shadow: 0 10px 28px rgba(8, 24, 56, 0.18);
+}
+
+.cv.light .gw-btn--google {
+  background: #ffffff;
+  color: #0c1a2e;
+  border: 1px solid rgba(30, 70, 130, 0.14);
+  box-shadow: 0 8px 22px rgba(40, 90, 160, 0.1);
+}
+
+.gw-btn--apple {
+  background: #0a0f1c;
+  color: #f4f7fb;
+  box-shadow: 0 12px 30px rgba(2, 8, 24, 0.35);
+}
+
+.cv.light .gw-btn--apple {
+  background: #0c1a2e;
+  color: #f7fbff;
+}
+
+.gw-btn--contact {
+  color: var(--honey);
+  background: rgba(78, 180, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(78, 180, 255, 0.28);
+}
+
+.cv.light .gw-btn--contact {
+  background: rgba(22, 87, 184, 0.05);
+  box-shadow: inset 0 0 0 1px rgba(22, 87, 184, 0.28);
+}
+
+.gw-btn--contact:hover {
+  background: rgba(78, 180, 255, 0.12);
+}
+
+.cv.light .gw-btn--contact:hover {
+  background: rgba(22, 87, 184, 0.09);
+}
+

@@ -8,7 +8,7 @@ import { chipStyle, press } from '../lib/styles';
 import { useApp } from '../store/AppStore';
 import type { Tier } from '../types';
 
-const TABLE_CHIP_FILL = 'linear-gradient(120deg,#F472B6,#E2691B)';
+const TABLE_CHIP_FILL = 'linear-gradient(120deg,#F472B6,#3B9EFF)';
 
 const TIER_META: Record<Tier, [string, string]> = {
   must: ['Must', 'var(--honey)'],
@@ -63,15 +63,7 @@ export function TableTab() {
         The list that survives the group chat · {table.length} places
       </p>
 
-      <div
-        style={{
-          border: '1px solid var(--lineB)',
-          borderRadius: 18,
-          overflow: 'hidden',
-          boxShadow: 'var(--shadow)',
-          marginBottom: 14,
-        }}
-      >
+      <div className="softFrame" style={{ marginBottom: 14 }}>
         <LazyMap id="map-table" center={NYC_TABLE_CENTER} zoom={12} markers={markers} height={170} light={light} />
       </div>
 
@@ -99,14 +91,22 @@ export function TableTab() {
               // ambient gradient (translucent --panel composites flakily).
               background: 'var(--panelS)',
               border: '1px solid var(--line)',
-              borderRadius: 16,
+              borderRadius: 22,
               padding: '14px 16px',
               marginBottom: 10,
               position: 'relative',
               overflow: 'hidden',
             }}
           >
-            <div style={{ position: 'absolute', inset: '0 auto 0 0', width: 3, background: 'var(--pink)' }} />
+            <div
+              style={{
+                position: 'absolute',
+                inset: '0 auto 0 0',
+                width: 4,
+                borderRadius: '0 8px 8px 0',
+                background: 'var(--pink)',
+              }}
+            />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <b className="grot" style={{ fontSize: 15 }}>
                 {t.name}

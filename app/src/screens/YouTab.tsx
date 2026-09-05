@@ -129,13 +129,13 @@ export function YouTab() {
         style={{
           background: 'var(--panel)',
           border: '1px solid var(--lineB)',
-          borderRadius: 18,
+          borderRadius: 24,
           padding: '16px 18px',
           position: 'relative',
           overflow: 'hidden',
         }}
       >
-        <div style={{ position: 'absolute', inset: '0 0 auto 0', height: 2, background: 'var(--grad)' }} />
+        <div style={{ position: 'absolute', inset: '0 0 auto 0', height: 3, background: 'var(--grad)' }} />
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <b className="grot" style={{ fontSize: 16 }}>
             {planName}
@@ -146,7 +146,7 @@ export function YouTab() {
         <button
           className="press ctaBtn"
           onClick={openPricing}
-          style={{ ...press(0.96), borderRadius: 12, padding: '12px 18px', fontSize: 11.5, letterSpacing: '.09em' }}
+          style={{ ...press(0.96), borderRadius: 14, padding: '12px 18px', fontSize: 11.5, letterSpacing: '.09em' }}
         >
           See Cohive+ plans
         </button>
@@ -157,7 +157,7 @@ export function YouTab() {
           style={{
             background: 'var(--panel)',
             border: '1px solid var(--honey)',
-            borderRadius: 18,
+            borderRadius: 24,
             padding: '16px 18px',
             marginTop: 16,
             position: 'relative',

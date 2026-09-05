@@ -18,16 +18,16 @@ export function TabBar() {
       className="panelCard"
       style={{
         position: 'absolute',
-        left: 14,
-        right: 14,
+        left: 12,
+        right: 12,
         bottom: 'var(--safe-bottom, 26px)',
         zIndex: 30,
         display: 'flex',
-        backdropFilter: 'blur(18px)',
-        WebkitBackdropFilter: 'blur(18px)',
+        backdropFilter: 'blur(22px) saturate(1.2)',
+        WebkitBackdropFilter: 'blur(22px) saturate(1.2)',
         border: '1px solid var(--lineB)',
-        borderRadius: 24,
-        padding: 7,
+        borderRadius: 32,
+        padding: 6,
         boxShadow: 'var(--shadow)',
       }}
     >
@@ -46,11 +46,11 @@ export function TabBar() {
               flexDirection: 'column',
               alignItems: 'center',
               gap: 4,
-              padding: '9px 0 8px',
+              padding: '10px 0 9px',
               border: 'none',
               cursor: 'pointer',
-              borderRadius: 18,
-              transition: 'all .22s cubic-bezier(.2,.9,.25,1.2)',
+              borderRadius: 26,
+              transition: 'all .28s cubic-bezier(.2,.85,.25,1.1)',
               background: on ? 'var(--grad)' : 'transparent',
               color: on ? 'var(--onGrad)' : 'var(--soft)',
               boxShadow: on ? 'var(--glow)' : 'none',
@@ -58,7 +58,15 @@ export function TabBar() {
           >
             <span
               aria-hidden
-              style={{ width: 15, height: 15, background: 'currentColor', clipPath: clip, display: 'block' }}
+              style={{
+                width: 15,
+                height: 15,
+                background: 'currentColor',
+                clipPath: clip,
+                display: 'block',
+                transform: on ? 'scale(1.08)' : 'scale(1)',
+                transition: 'transform .28s cubic-bezier(.2,.85,.25,1.1)',
+              }}
             />
             <span className="grot" style={{ fontSize: 9, fontWeight: 600, letterSpacing: '.06em' }}>
               {label}

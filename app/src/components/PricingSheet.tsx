@@ -140,11 +140,11 @@ export function PricingSheet() {
           position: 'relative',
           background: 'var(--bg)',
           border: '1px solid var(--lineB)',
-          borderRadius: '26px 26px 0 0',
+          borderRadius: '32px 32px 0 0',
           maxHeight: '82%',
           overflowY: 'auto',
           padding: '14px 20px 34px',
-          animation: 'cvslide .45s cubic-bezier(.2,.9,.25,1.08) both',
+          animation: 'cvslide .48s cubic-bezier(.2,.85,.25,1.1) both',
           outline: 'none',
         }}
       >
@@ -168,7 +168,7 @@ export function PricingSheet() {
               background: p.featured ? 'var(--panelS)' : 'var(--panel)',
               border: p.featured ? '1.5px solid var(--honey)' : '1px solid var(--lineB)',
               boxShadow: p.featured ? 'var(--glow)' : 'none',
-              borderRadius: 16,
+              borderRadius: 22,
               padding: '15px 16px',
               marginBottom: 12,
             }}
@@ -217,7 +217,7 @@ export function PricingSheet() {
                 background: p.featured ? 'var(--grad)' : 'transparent',
                 color: p.featured ? 'var(--onGrad)' : 'var(--honey)',
                 border: p.featured ? 'none' : '1px solid var(--lineB)',
-                borderRadius: 11,
+                borderRadius: 14,
                 padding: 11,
                 fontWeight: 700,
                 fontSize: 11.5,

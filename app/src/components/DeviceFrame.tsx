@@ -129,7 +129,18 @@ export function DeviceFrame({ dark, children }: { dark: boolean; children: React
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: '26px 12px', boxSizing: 'border-box' }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'grid',
+        placeItems: 'center',
+        padding: '26px 12px',
+        boxSizing: 'border-box',
+        background: dark
+          ? 'radial-gradient(900px 520px at 80% 0%, rgba(78,180,255,0.16), transparent 55%), radial-gradient(800px 480px at 10% 90%, rgba(27,79,216,0.2), transparent 50%), #050914'
+          : 'radial-gradient(900px 520px at 80% 0%, rgba(143,208,255,0.45), transparent 55%), radial-gradient(800px 480px at 10% 90%, rgba(59,158,255,0.22), transparent 50%), #e8f1fa',
+      }}
+    >
       <div
         style={{
           width: FRAME_W,
@@ -138,7 +149,9 @@ export function DeviceFrame({ dark, children }: { dark: boolean; children: React
           overflow: 'hidden',
           position: 'relative',
           background: dark ? '#000' : '#F2F2F7',
-          boxShadow: '0 40px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.12)',
+          boxShadow: dark
+            ? '0 40px 90px rgba(8,24,56,0.55), 0 0 0 1px rgba(120,170,230,0.16)'
+            : '0 40px 90px rgba(40,90,160,0.18), 0 0 0 1px rgba(30,70,130,0.1)',
           fontFamily: '-apple-system, system-ui, sans-serif',
           WebkitFontSmoothing: 'antialiased',
         }}

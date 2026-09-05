@@ -15,13 +15,14 @@ export function Toast({ message }: { message: string }) {
         border: '1px solid var(--lineB)',
         borderLeft: '3px solid var(--honey)',
         color: 'var(--ink)',
-        borderRadius: 13,
+        borderRadius: 18,
         padding: '11px 20px',
         fontWeight: 600,
         fontSize: 12,
         boxShadow: 'var(--shadow)',
+        backdropFilter: 'blur(14px)',
         whiteSpace: 'nowrap',
-        animation: 'cvpop .3s ease both',
+        animation: 'cvpop .35s cubic-bezier(.2,.85,.25,1.1) both',
       }}
     >
       {message}

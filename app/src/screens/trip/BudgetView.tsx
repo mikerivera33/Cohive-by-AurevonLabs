@@ -44,7 +44,10 @@ export function BudgetView() {
 
   return (
     <>
-      <div style={{ background: 'var(--panel)', border: '1px solid var(--lineB)', borderRadius: 18, padding: '16px 18px' }}>
+      <div
+        className="panelCard"
+        style={{ border: '1px solid var(--lineB)', borderRadius: 24, padding: '16px 18px', boxShadow: 'var(--shadow)' }}
+      >
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <b className="grot gradText" style={{ fontSize: 24 }}>
             ${spent}

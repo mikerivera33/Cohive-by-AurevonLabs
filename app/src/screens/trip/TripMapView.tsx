@@ -23,15 +23,7 @@ export function TripMapView() {
 
   return (
     <>
-      <div
-        style={{
-          position: 'relative',
-          border: '1px solid var(--lineB)',
-          borderRadius: 18,
-          overflow: 'hidden',
-          boxShadow: 'var(--shadow)',
-        }}
-      >
+      <div className="softFrame" style={{ position: 'relative' }}>
         <LazyMap id="map-trip" center={TOKYO_CENTER} zoom={11} markers={markers} height={240} light={light} />
         <div
           className="panelCard"
@@ -42,10 +34,11 @@ export function TripMapView() {
             zIndex: 400,
             display: 'flex',
             gap: 12,
-            borderRadius: 12,
+            borderRadius: 16,
             padding: '8px 14px',
             fontSize: 11,
             color: 'var(--soft)',
+            boxShadow: 'none',
           }}
         >
           <span>
@@ -73,14 +66,14 @@ export function TripMapView() {
         className="panelCard"
         style={{
           border: '1px solid var(--lineB)',
-          borderRadius: 18,
+          borderRadius: 24,
           padding: 18,
           marginTop: 14,
           position: 'relative',
           overflow: 'hidden',
         }}
       >
-        <div style={{ position: 'absolute', inset: '0 0 auto 0', height: 2, background: 'var(--grad)' }} />
+        <div style={{ position: 'absolute', inset: '0 0 auto 0', height: 3, background: 'var(--grad)' }} />
         <h2 className="grot" style={{ fontWeight: 700, fontSize: 19, margin: '0 0 4px' }}>
           Drop a link.
           <br />
@@ -232,7 +225,7 @@ export function TripMapView() {
                           width: c.confidence + '%',
                           height: '100%',
                           background:
-                            c.confidence > 80 ? 'var(--grad)' : 'linear-gradient(120deg,#FBBF24,#E2691B)',
+                            c.confidence > 80 ? 'var(--grad)' : 'linear-gradient(120deg,#8FD0FF,#1B4FD8)',
                           borderRadius: 99,
                           transition: 'width .6s ease',
                         }}

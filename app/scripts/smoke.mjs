@@ -56,11 +56,17 @@ const tap = async (name) => {
 
 console.log('\nonboarding');
 await page.goto(BASE + '/?start=onboarding', { waitUntil: 'networkidle' });
-await check('intro slide 1 renders', () => has('Every idea,'));
+await check('gateway renders', () => has('Your hive'));
+await check('gateway offers Google', () => has('Continue with Google'));
+await check('gateway offers Apple', () => has('Continue with Apple'));
+await check('gateway offers email/phone', () => has('Start with email / phone'));
+await check('create session via Apple', async () => {
+  await tap('Continue with Apple');
+  await has('Every idea,');
+});
 await check('advance to slide 2', async () => { await tap('Continue'); await has('Decide without'); });
 await check('advance to slide 3', async () => { await tap('Continue'); await has('From shortlist'); });
-await check('auth screen', async () => { await tap('Continue'); await has('Welcome to'); });
-await check('create hive step', async () => { await tap('Continue with Apple'); await has('Name your'); });
+await check('create hive step', async () => { await tap('Continue'); await has('Name your'); });
 await check('hive kind chips select', async () => { await tap('Home · Nest'); });
 await check('invite step with seeded invitees', async () => {
   await page.getByPlaceholder('e.g. Tokyo Crew').fill('Tokyo Crew');
@@ -337,7 +343,8 @@ await check('replay welcome tour returns to onboarding', async () => {
   await page.waitForTimeout(400);
   await page.getByRole('button', { name: 'Replay welcome tour' }).click();
   await page.waitForTimeout(500);
-  await has('Every idea,');
+  await has('Your hive');
+  await has('Continue with Google');
 });
 await check('skip returns to the app on the tab you left', async () => {
   await page.getByRole('button', { name: 'Skip' }).click();

@@ -4,11 +4,11 @@ import type { Category } from '../types';
 /** Per-category accent — drives map pins, spot rails and the hex chips. */
 export const CATEGORY_COLORS: Record<Category, string> = {
   food: '#F472B6',
-  sight: '#F5A524',
+  sight: '#4EB4FF',
   nature: '#34D399',
   museum: '#60A5FA',
   nightlife: '#A78BFA',
-  shopping: '#FBBF24',
+  shopping: '#8FD0FF',
   hotel: '#2DD4BF',
 };
 
@@ -23,7 +23,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
 };
 
 export const catColor = (c: Category | string): string =>
-  CATEGORY_COLORS[c as Category] || '#F5A524';
+  CATEGORY_COLORS[c as Category] || '#4EB4FF';
 
 export const catLabel = (c: Category | string): string =>
   CATEGORY_LABELS[c as Category] || String(c);
@@ -61,10 +61,11 @@ export const chipStyle = (on: boolean, color?: string): CSSProperties => ({
   padding: '7px 13px',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
-  transition: 'all .18s ease',
+  transition: 'all .22s cubic-bezier(.2,.85,.25,1.1)',
   border: on ? 'none' : '1px solid var(--lineB)',
   background: on ? color || 'var(--grad)' : 'transparent',
   color: on ? 'var(--onGrad)' : 'var(--soft)',
+  boxShadow: on ? 'var(--glow)' : 'none',
 });
 
 /** Sets the scale factor used by `.press:active`. */
