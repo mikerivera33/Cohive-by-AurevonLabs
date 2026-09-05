@@ -11,7 +11,20 @@ import type { ReactNode } from 'react';
 
 import { planTrip, scanImport } from '../engine/engine';
 import * as seed from '../engine/seed';
+import {
+  ApiError,
+  apiAddMember,
+  apiAddSpot,
+  apiCastVote,
+  apiDemoAuth,
+  apiGetTrip,
+  apiHealthy,
+  apiListTrips,
+  apiScan,
+  getApiToken,
+} from '../lib/api';
 import { fireConfetti } from '../lib/confetti';
+import { sanitizeImportText } from '../lib/sanitize';
 import { isBool, isShortString, isStringArray, load, save } from '../lib/storage';
 import type {
   ActivityItem,
@@ -51,6 +64,19 @@ const STAGE_MS = 520;
 /** How long the scanner spends "reading" before resolving. */
 const SCAN_MS = 1100;
 
+/** Bound feed growth under spam / stress so session state cannot run away. */
+const ACTIVITY_CAP = 40;
+const ADDED_IDS_CAP = 200;
+
+function prependActivity(prev: ActivityItem[], item: ActivityItem): ActivityItem[] {
+  return [item, ...prev].slice(0, ACTIVITY_CAP);
+}
+
+function appendAddedId(prev: string[], name: string): string[] {
+  const next = prev.includes(name) ? prev : [...prev, name];
+  return next.length > ADDED_IDS_CAP ? next.slice(-ADDED_IDS_CAP) : next;
+}
+
 interface AppStore {
   /* appearance */
   light: boolean;
@@ -60,6 +86,10 @@ interface AppStore {
   onboarded: boolean;
   finishOnboarding: (hiveName?: string) => void;
   replayOnboarding: () => void;
+  /** Creates a real API session when the backend is up; no-ops offline. */
+  authenticate: (provider: 'apple' | 'google' | 'email') => Promise<void>;
+  /** True when votes/members/scan go through server-enforced ACL. */
+  apiLive: boolean;
 
   /* navigation */
   tab: TabId;
@@ -171,6 +201,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [nest, setNest] = useState<Listing[]>(cloneNest);
   const [table] = useState<Restaurant[]>(() => seed.table.map((t) => ({ ...t })));
   const [addedIds, setAddedIds] = useState<string[]>([]);
+  const [apiLive, setApiLive] = useState(false);
+  const [apiTripId, setApiTripId] = useState<string | null>(null);
+  const [tripMeta, setTripMeta] = useState<Trip>(() => ({ ...seed.trip }));
 
   /* ── scanner ──────────────────────────────────────────────── */
   const [scanText, setScanText] = useState('');
@@ -208,6 +241,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toastTimer = useRef<number | undefined>(undefined);
   const buildTimer = useRef<number | undefined>(undefined);
   const scanTimer = useRef<number | undefined>(undefined);
+  const apiTripIdRef = useRef<string | null>(null);
+  const apiLiveRef = useRef(false);
 
   // The build runs on a timer, so it needs the spot list as of the moment it
   // finishes rather than the one captured when the button was tapped.
@@ -215,6 +250,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     spotsRef.current = spots;
   }, [spots]);
+  useEffect(() => {
+    apiTripIdRef.current = apiTripId;
+  }, [apiTripId]);
+  useEffect(() => {
+    apiLiveRef.current = apiLive;
+  }, [apiLive]);
 
   useEffect(
     () => () => {
@@ -231,8 +272,88 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toastTimer.current = window.setTimeout(() => setToast(''), 2200);
   }, []);
 
+  const hydrateFromApi = useCallback(async (tripId: string) => {
+    const data = await apiGetTrip(tripId);
+    setApiTripId(tripId);
+    setApiLive(true);
+    setTripMeta({
+      ...seed.trip,
+      id: Number(data.trip.id) || seed.trip.id,
+      name: data.trip.name,
+      city: data.trip.city,
+      lat: data.trip.lat,
+      lng: data.trip.lng,
+    });
+    setSpots(data.spots.map((s) => ({ ...s })));
+    setMembers(
+      data.members.map((m, i) => ({
+        id: typeof m.id === 'number' ? m.id : i + 1,
+        name: m.name,
+        color: m.color,
+      }))
+    );
+  }, []);
+
+  // Resume a prior session when the API is up; otherwise stay on seed fixtures.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const healthy = await apiHealthy();
+      if (cancelled || !healthy) return;
+      const token = getApiToken();
+      if (!token) {
+        setApiLive(false);
+        return;
+      }
+      try {
+        const { trips } = await apiListTrips();
+        if (cancelled || !trips.length) return;
+        await hydrateFromApi(trips[0].id);
+      } catch {
+        if (!cancelled) setApiLive(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrateFromApi]);
+
+  const authenticate = useCallback(
+    async (provider: 'apple' | 'google' | 'email') => {
+      try {
+        const healthy = await apiHealthy();
+        if (!healthy) return;
+        await apiDemoAuth(provider);
+        const { trips } = await apiListTrips();
+        if (trips[0]) await hydrateFromApi(trips[0].id);
+      } catch (e) {
+        const code = e instanceof ApiError ? e.code : 'auth_failed';
+        say('Sign-in unavailable (' + code + ') — continuing offline');
+      }
+    },
+    [hydrateFromApi, say]
+  );
+
   const setTier = useCallback(
     (id: number, tier: Tier) => {
+      const tripId = apiTripIdRef.current;
+      if (apiLiveRef.current && tripId) {
+        void (async () => {
+          try {
+            const current = spotsRef.current.find((s) => s.id === id);
+            const nextTier = current?.tier === tier ? null : tier;
+            const { spot } = await apiCastVote(tripId, id, nextTier);
+            setSpots((prev) => prev.map((sp) => (sp.id === id ? { ...spot } : sp)));
+            if (nextTier === 'must') {
+              fireConfetti();
+              say('Locked in as a must-do ★');
+            }
+          } catch (e) {
+            say(e instanceof ApiError && e.code === 'forbidden' ? 'Not a hive member' : 'Vote failed');
+          }
+        })();
+        return;
+      }
       setSpots((prev) =>
         prev.map((sp) =>
           sp.id === id
@@ -255,6 +376,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addSpotFromScan = useCallback(
     (c: ScanCandidate, source: string) => {
+      const tripId = apiTripIdRef.current;
+      if (apiLiveRef.current && tripId) {
+        void (async () => {
+          try {
+            const { spot } = await apiAddSpot(tripId, c, source);
+            setSpots((prev) => [...prev, spot]);
+            setAddedIds((prev) => appendAddedId(prev, c.name));
+            setActivity((prev) =>
+              prependActivity(prev, { who: 'You', what: 'imported ' + c.name, when: 'just now' })
+            );
+            say('Saved to ' + tripMeta.name);
+          } catch {
+            say('Could not save spot');
+          }
+        })();
+        return;
+      }
       setSpots((prev) => [
         ...prev,
         {
@@ -274,36 +412,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
           note: c.matched === 'exact' ? '' : 'Confirmed from scan',
         },
       ]);
-      setAddedIds((prev) => [...prev, c.name]);
-      setActivity((prev) => [
-        { who: 'You', what: 'imported ' + c.name, when: 'just now' },
-        ...prev,
-      ]);
-      say('Saved to ' + seed.trip.name);
+      setAddedIds((prev) => appendAddedId(prev, c.name));
+      setActivity((prev) =>
+        prependActivity(prev, { who: 'You', what: 'imported ' + c.name, when: 'just now' })
+      );
+      say('Saved to ' + tripMeta.name);
     },
-    [say]
+    [say, tripMeta.name]
   );
 
   const scan = useCallback(() => {
-    const txt = scanText.trim();
-    if (!txt) {
+    const cleaned = sanitizeImportText(scanText);
+    if (!cleaned) {
       say('Paste a link or caption first');
       return;
     }
     setScanning(true);
     setScanResult(null);
     window.clearTimeout(scanTimer.current);
+
+    const tripId = apiTripIdRef.current;
+    if (apiLiveRef.current && tripId) {
+      void (async () => {
+        try {
+          const result = await apiScan(tripId, cleaned);
+          setScanResult({ source: result.source, candidates: result.candidates });
+        } catch (e) {
+          if (e instanceof ApiError && e.status === 429) {
+            say('Scan limit reached — try again shortly');
+          } else {
+            say('Scan failed');
+          }
+        } finally {
+          setScanning(false);
+        }
+      })();
+      return;
+    }
+
     scanTimer.current = window.setTimeout(() => {
       setScanResult(
-        scanImport(txt, {
-          city: seed.trip.city,
-          lat: seed.TOKYO_CENTER[0],
-          lng: seed.TOKYO_CENTER[1],
+        scanImport(cleaned, {
+          city: tripMeta.city,
+          lat: tripMeta.lat || seed.TOKYO_CENTER[0],
+          lng: tripMeta.lng || seed.TOKYO_CENTER[1],
         })
       );
       setScanning(false);
     }, SCAN_MS);
-  }, [scanText, say]);
+  }, [scanText, say, tripMeta.city, tripMeta.lat, tripMeta.lng]);
 
   const addExpense = useCallback(
     (label: string, amount: number) => {
@@ -318,11 +475,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addMember = useCallback(
     (name: string) => {
+      const tripId = apiTripIdRef.current;
+      if (apiLiveRef.current && tripId) {
+        void (async () => {
+          try {
+            const { member } = await apiAddMember(tripId, name);
+            setMembers((prev) => [
+              ...prev,
+              {
+                id: typeof member.id === 'number' ? member.id : Date.now(),
+                name: member.name,
+                color: member.color,
+              },
+            ]);
+            setActivity((prev) =>
+              prependActivity(prev, {
+                who: 'You',
+                what: 'invited ' + name + ' to the hive',
+                when: 'just now',
+              })
+            );
+            say(name + ' invited');
+          } catch (e) {
+            say(e instanceof ApiError && e.code === 'forbidden' ? 'Not a hive member' : 'Invite failed');
+          }
+        })();
+        return;
+      }
       setMembers((prev) => [...prev, { id: Date.now(), name, color: '#60A5FA' }]);
-      setActivity((prev) => [
-        { who: 'You', what: 'invited ' + name + ' to the hive', when: 'just now' },
-        ...prev,
-      ]);
+      setActivity((prev) =>
+        prependActivity(prev, {
+          who: 'You',
+          what: 'invited ' + name + ' to the hive',
+          when: 'just now',
+        })
+      );
       say(name + ' invited');
     },
     [say]
@@ -425,11 +612,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       onboarded,
       finishOnboarding,
       replayOnboarding,
+      authenticate,
+      apiLive,
       tab,
       setTab,
       tripView,
       setTripView,
-      trip: seed.trip,
+      trip: tripMeta,
       spots,
       expenses,
       members,
@@ -479,8 +668,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       confetti: fireConfetti,
     }),
     [
-      light, onboarded, finishOnboarding, replayOnboarding, tab, tripView,
-      spots, expenses, members, activity, nest, table, addedIds,
+      light, onboarded, finishOnboarding, replayOnboarding, authenticate, apiLive, tab, tripView,
+      tripMeta, spots, expenses, members, activity, nest, table, addedIds,
       setTier, addSpotFromScan, addExpense, addMember, toggleReaction,
       scanText, scanning, scanResult, scan,
       catFilter, tableFilter, expLabel, expAmt,

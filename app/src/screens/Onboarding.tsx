@@ -80,7 +80,7 @@ function HexField() {
 }
 
 export function Onboarding() {
-  const { finishOnboarding } = useApp();
+  const { finishOnboarding, authenticate } = useApp();
   const [step, setStep] = useState<Step>('intro');
   const [slide, setSlide] = useState(0);
   const [hiveName, setHiveName] = useState('');
@@ -90,8 +90,20 @@ export function Onboarding() {
     { name: 'Ben', color: '#34D399' },
   ]);
   const [newInvite, setNewInvite] = useState('');
+  const [authBusy, setAuthBusy] = useState(false);
 
   const sl = SLIDES[slide] || SLIDES[0];
+
+  const continueWith = async (provider: 'apple' | 'google' | 'email') => {
+    if (authBusy) return;
+    setAuthBusy(true);
+    try {
+      await authenticate(provider);
+      setStep('hive');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
 
   const addInvite = () => {
     const n = newInvite.trim();
@@ -229,7 +241,8 @@ export function Onboarding() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
             <button
               className="press grot"
-              onClick={() => setStep('hive')}
+              onClick={() => void continueWith('apple')}
+              disabled={authBusy}
               style={{
                 ...press(0.98),
                 display: 'flex',
@@ -244,13 +257,15 @@ export function Onboarding() {
                 fontWeight: 600,
                 fontSize: 14.5,
                 cursor: 'pointer',
+                opacity: authBusy ? 0.7 : 1,
               }}
             >
                Continue with Apple
             </button>
             <button
               className="press grot"
-              onClick={() => setStep('hive')}
+              onClick={() => void continueWith('google')}
+              disabled={authBusy}
               style={{
                 ...press(0.98),
                 display: 'flex',
@@ -265,13 +280,15 @@ export function Onboarding() {
                 fontWeight: 600,
                 fontSize: 14.5,
                 cursor: 'pointer',
+                opacity: authBusy ? 0.7 : 1,
               }}
             >
               G&#8202; Continue with Google
             </button>
             <button
               className="grot"
-              onClick={() => setStep('hive')}
+              onClick={() => void continueWith('email')}
+              disabled={authBusy}
               style={{
                 background: 'none',
                 color: 'var(--honey)',
@@ -280,6 +297,7 @@ export function Onboarding() {
                 fontWeight: 600,
                 fontSize: 13.5,
                 cursor: 'pointer',
+                opacity: authBusy ? 0.7 : 1,
               }}
             >
               Continue with email

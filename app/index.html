@@ -6,12 +6,14 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no"
     />
-    <!-- Locked to exactly the origins the app uses: Google Fonts (css + font
-         files), Carto basemap tiles, and self. Inline style attributes are the
-         app's styling mechanism, hence 'unsafe-inline' on style-src only. -->
+    <!-- Locked to exactly the origins the app uses: self (incl. self-hosted
+         fonts) and Carto basemap tiles. Inline style attributes are the
+         app's styling mechanism, hence 'unsafe-inline' on style-src only.
+         frame-ancestors is omitted here — browsers ignore it in <meta> and
+         warn; clickjacking is blocked via X-Frame-Options / CSP headers. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.basemaps.cartocdn.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://*.basemaps.cartocdn.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
     />
     <meta name="referrer" content="no-referrer" />
     <meta name="theme-color" content="#0A0F1C" />
@@ -28,11 +30,20 @@
     />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/icon-1024.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Same-origin font preloads (no Google Fonts). font-display:swap in fonts.css. -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=Outfit:wght@300;400;500;600&display=swap"
-      rel="stylesheet"
+      rel="preload"
+      href="/fonts/space-grotesk-latin-600-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/outfit-latin-400-normal.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
     />
   </head>
   <body>

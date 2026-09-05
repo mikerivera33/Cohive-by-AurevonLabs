@@ -1,8 +1,9 @@
 # Netlify build + hosting config for the Cohive web app.
 
 [build]
-  command = "npm run build"
+  command = "npm run build:server && npm run build"
   publish = "dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "22"
@@ -13,6 +14,7 @@
   [headers.values]
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
     Referrer-Policy = "no-referrer"
     Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
@@ -20,6 +22,11 @@
 # Hashed assets can cache forever; the HTML shell must always revalidate.
 [[headers]]
   for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/fonts/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 

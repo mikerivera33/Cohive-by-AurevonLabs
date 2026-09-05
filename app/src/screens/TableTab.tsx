@@ -12,8 +12,9 @@ const TABLE_CHIP_FILL = 'linear-gradient(120deg,#F472B6,#E2691B)';
 
 const TIER_META: Record<Tier, [string, string]> = {
   must: ['Must', 'var(--honey)'],
-  maybe: ['Maybe', 'var(--soft)'],
-  iftime: ['If time', 'var(--soft)'],
+  // Brighter than --soft so 9px uppercase chips clear WCAG AA on panelS.
+  maybe: ['Maybe', '#aeb6c9'],
+  iftime: ['If time', '#aeb6c9'],
 };
 
 export function TableTab() {
@@ -94,7 +95,9 @@ export function TableTab() {
           <Reveal
             key={t.id}
             style={{
-              background: 'var(--panel)',
+              // Opaque panelS keeps soft-on-panel text AA-stable over the
+              // ambient gradient (translucent --panel composites flakily).
+              background: 'var(--panelS)',
               border: '1px solid var(--line)',
               borderRadius: 16,
               padding: '14px 16px',
@@ -157,7 +160,7 @@ export function TableTab() {
                   '&find_loc=New+York'
                 }
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="ghostBtn"
                 style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 10, padding: '7px 12px', letterSpacing: '.05em' }}
               >
@@ -166,7 +169,7 @@ export function TableTab() {
               <a
                 href={'https://www.google.com/maps/search/' + encodeURIComponent(t.name + ' ' + t.hood + ' NYC')}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="ghostBtn"
                 style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 10, padding: '7px 12px', letterSpacing: '.05em' }}
               >

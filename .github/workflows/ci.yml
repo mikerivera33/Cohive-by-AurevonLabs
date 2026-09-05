@@ -36,6 +36,9 @@ jobs:
       - name: Engine property checks (36)
         run: npm run verify:engine
 
+      - name: API auth, ACL, sanitize, rate limits
+        run: npm run verify:api
+
       - name: Engine stress + fuzz (seeded)
         run: npm run stress:engine
 

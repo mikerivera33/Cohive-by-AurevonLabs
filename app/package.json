@@ -7,17 +7,22 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:server": "esbuild src/engine/engine.ts --bundle --platform=node --format=esm --outfile=server/engine-bundle.mjs --log-level=error",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "verify:engine": "esbuild scripts/verify-engine.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/verify-engine.mjs --log-level=error && node node_modules/.cache/verify-engine.mjs",
+    "verify:api": "npm run build:server && node scripts/verify-api.mjs",
     "smoke": "node scripts/smoke.mjs",
     "sync": "npm run build && cap sync",
     "ios": "npm run sync && cap open ios",
     "android": "npm run sync && cap open android",
-    "stress:engine": "esbuild scripts/stress-engine.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/stress-engine.mjs --log-level=error && node node_modules/.cache/stress-engine.mjs",
+    "stress:engine": "esbuild scripts/stress-engine.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/stress-engine.mjs --log-level=error && node --expose-gc node_modules/.cache/stress-engine.mjs",
     "stress": "node scripts/stress-browser.mjs",
+    "heap:engine": "node --expose-gc scripts/heap-probe.mjs",
+    "build:single": "vite build --config vite.single.config.ts && node scripts/inline-single.mjs",
     "a11y": "node scripts/a11y.mjs",
-    "start": "node server.mjs"
+    "api": "npm run build:server && node server.mjs",
+    "start": "npm run build:server && node server.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
