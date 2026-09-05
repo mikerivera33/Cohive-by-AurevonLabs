@@ -7,10 +7,11 @@
       content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no"
     />
     <!-- Locked to exactly the origins the app uses: self (incl. self-hosted
-         fonts) and Carto basemap tiles. Inline style attributes are the
-         app's styling mechanism, hence 'unsafe-inline' on style-src only.
-         frame-ancestors is omitted here — browsers ignore it in <meta> and
-         warn; clickjacking is blocked via X-Frame-Options / CSP headers. -->
+         fonts) and Carto basemap tiles (worldwide OSM-derived raster). Inline
+         style attributes are the app's styling mechanism, hence 'unsafe-inline'
+         on style-src only. frame-ancestors is omitted here — browsers ignore it
+         in <meta> and warn; clickjacking is blocked via X-Frame-Options / CSP
+         headers. -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://*.basemaps.cartocdn.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"

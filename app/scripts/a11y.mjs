@@ -67,6 +67,11 @@ console.log('\napp — dark');
 await page.goto(BASE + '/?start=app', { waitUntil: 'networkidle' });
 await page.waitForTimeout(700);
 await scan('hive home');
+await page.getByRole('button', { name: 'Open fullscreen map of all saved places' }).first().click();
+await page.waitForTimeout(500);
+await scan('fullscreen map');
+await page.keyboard.press('Escape');
+await page.waitForTimeout(300);
 await tab('Trip');
 await scan('trip · map + scanner');
 for (const v of ['Spots', 'Plan', 'Budget', 'Crew']) {

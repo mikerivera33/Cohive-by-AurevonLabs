@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-import { LazyMap } from '../components/LazyMap';
+import { MapPreview } from '../components/MapPreview';
 import type { MapMarker } from '../components/LazyMap';
 import { NYC_NEST_CENTER } from '../engine/seed';
 import { Reveal } from '../lib/Reveal';
@@ -41,17 +41,16 @@ export function NestTab() {
         NYC · you + Maya · {nest.length} listings saved
       </p>
 
-      <div className="softFrame" style={{ marginBottom: 14 }}>
-        <LazyMap
-          id="map-nest"
-          center={NYC_NEST_CENTER}
-          zoom={11}
-          markers={markers}
-          height={190}
-          light={light}
-          focus={focus}
-        />
-      </div>
+      <MapPreview
+        id="map-nest"
+        center={NYC_NEST_CENTER}
+        zoom={11}
+        markers={markers}
+        height={190}
+        light={light}
+        focus={focus}
+        style={{ marginBottom: 14 }}
+      />
 
       {nest.map((n) => (
         <Reveal

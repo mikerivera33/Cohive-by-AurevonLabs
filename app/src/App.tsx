@@ -33,18 +33,19 @@ function Shell() {
   return (
     <DeviceFrame dark={!light}>
       <div
-        className={'cv' + (light ? ' light' : '')}
-        style={{
-          position: 'relative',
-          height: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--bg)',
-          color: 'var(--ink)',
-          fontFamily: "'Outfit', system-ui, sans-serif",
-          overflow: 'hidden',
-        }}
-      >
+          className={'cv' + (light ? ' light' : '')}
+          id="cv-shell"
+          style={{
+            position: 'relative',
+            height: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--bg)',
+            color: 'var(--ink)',
+            fontFamily: "'Outfit', system-ui, sans-serif",
+            overflow: 'hidden',
+          }}
+        >
         <div className="cv-atmosphere" aria-hidden>
           <div className="cv-atmosphere__orb" />
         </div>

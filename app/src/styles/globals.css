@@ -380,6 +380,118 @@ a:hover {
   color: var(--soft);
 }
 
+/* Tap-to-expand map preview */
+.mapPreview {
+  isolation: isolate;
+}
+.mapExpandHit {
+  position: absolute;
+  inset: 0;
+  z-index: 350;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: inherit;
+}
+.mapExpandHit:focus-visible {
+  outline: 2px solid var(--honey);
+  outline-offset: -2px;
+}
+.mapExpandChip {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 360;
+  pointer-events: none;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--panelS);
+  border: 1px solid var(--lineB);
+  border-radius: 999px;
+  padding: 6px 11px;
+  box-shadow: var(--shadow);
+}
+.mapPreviewOverlay {
+  pointer-events: none;
+}
+
+/* Fullscreen saved-places map (portaled into #cv-shell) */
+.mapFullscreen {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  outline: none;
+  animation: cvrise 0.35s cubic-bezier(0.2, 0.9, 0.25, 1.1) both;
+}
+.mapFullscreen__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  background: var(--bg);
+}
+.mapFullscreen__back {
+  background: var(--panelS);
+  border: 1px solid var(--lineB);
+  color: var(--ink);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.mapFullscreen__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.mapFullscreen__sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--soft);
+}
+.mapFullscreen__stage {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: block;
+}
+.mapFullscreen__stage > div {
+  position: absolute !important;
+  inset: 0;
+  height: auto !important;
+  width: 100%;
+}
+.mapFullscreen__stage .leaflet-container {
+  border-radius: 0;
+}
+.mapFullscreen__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 16px 18px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--soft);
+  flex-shrink: 0;
+  background: var(--panelS);
+}
+
 /* ── Repeated composites ──────────────────────────────────────── */
 
 /* Hexagon — the Cohive mark, used at every size. */

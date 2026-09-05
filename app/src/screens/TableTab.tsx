@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { LazyMap } from '../components/LazyMap';
+import { MapPreview } from '../components/MapPreview';
 import type { MapMarker } from '../components/LazyMap';
 import { NYC_TABLE_CENTER } from '../engine/seed';
 import { Reveal } from '../lib/Reveal';
@@ -63,9 +63,15 @@ export function TableTab() {
         The list that survives the group chat · {table.length} places
       </p>
 
-      <div className="softFrame" style={{ marginBottom: 14 }}>
-        <LazyMap id="map-table" center={NYC_TABLE_CENTER} zoom={12} markers={markers} height={170} light={light} />
-      </div>
+      <MapPreview
+        id="map-table"
+        center={NYC_TABLE_CENTER}
+        zoom={12}
+        markers={markers}
+        height={170}
+        light={light}
+        style={{ marginBottom: 14 }}
+      />
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
         {filters.map((f) => (

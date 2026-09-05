@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { LazyMap } from '../components/LazyMap';
+import { MapPreview } from '../components/MapPreview';
 import type { MapMarker } from '../components/LazyMap';
 import { Reveal } from '../lib/Reveal';
 import { catColor, memberDot, press } from '../lib/styles';
@@ -82,10 +82,17 @@ export function HomeTab() {
         Three hives are buzzing. Here’s where the plans stand.
       </p>
 
-      <div className="softFrame" style={{ position: 'relative', marginBottom: 16 }}>
-        <LazyMap id="map-home" center={TOKYO_CENTER} zoom={11} markers={markers} height={180} light={light} />
+      <MapPreview
+        id="map-home"
+        center={TOKYO_CENTER}
+        zoom={11}
+        markers={markers}
+        height={180}
+        light={light}
+        style={{ marginBottom: 16 }}
+      >
         <div
-          className="panelCard"
+          className="panelCard mapPreviewOverlay"
           style={{
             position: 'absolute',
             left: 10,
@@ -99,6 +106,7 @@ export function HomeTab() {
             fontSize: 11,
             color: 'var(--soft)',
             boxShadow: 'none',
+            pointerEvents: 'none',
           }}
         >
           <b className="grot" style={{ fontSize: 12, color: 'var(--honey)' }}>
@@ -111,7 +119,7 @@ export function HomeTab() {
             spots live
           </span>
         </div>
-      </div>
+      </MapPreview>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {cards.map((hv) => (

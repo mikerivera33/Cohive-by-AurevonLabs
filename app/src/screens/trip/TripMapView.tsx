@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { LazyMap } from '../../components/LazyMap';
+import { MapPreview } from '../../components/MapPreview';
 import type { MapMarker } from '../../components/LazyMap';
 import { TOKYO_CENTER } from '../../engine/seed';
 import { Reveal } from '../../lib/Reveal';
@@ -23,10 +23,9 @@ export function TripMapView() {
 
   return (
     <>
-      <div className="softFrame" style={{ position: 'relative' }}>
-        <LazyMap id="map-trip" center={TOKYO_CENTER} zoom={11} markers={markers} height={240} light={light} />
+      <MapPreview id="map-trip" center={TOKYO_CENTER} zoom={11} markers={markers} height={240} light={light}>
         <div
-          className="panelCard"
+          className="panelCard mapPreviewOverlay"
           style={{
             position: 'absolute',
             left: 10,
@@ -39,6 +38,7 @@ export function TripMapView() {
             fontSize: 11,
             color: 'var(--soft)',
             boxShadow: 'none',
+            pointerEvents: 'none',
           }}
         >
           <span>
@@ -60,7 +60,7 @@ export function TripMapView() {
             days
           </span>
         </div>
-      </div>
+      </MapPreview>
 
       <Reveal
         className="panelCard"

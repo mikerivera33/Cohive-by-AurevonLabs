@@ -16,21 +16,28 @@ interface LazyMapProps {
   center: [number, number];
   zoom: number;
   markers: MapMarker[];
-  height: number;
+  height: number | string;
   light: boolean;
   focus?: { lat: number; lng: number; zoom: number; nonce: number } | null;
+  interactive?: boolean;
+  fitMarkers?: boolean;
 }
 
 export type { MapMarker };
 
 export function LazyMap(props: LazyMapProps) {
+  const heightStyle = typeof props.height === 'number' ? props.height : undefined;
+  const heightCss = typeof props.height === 'string' ? props.height : undefined;
+
   return (
     <Suspense
       fallback={
         <div
           aria-hidden
           style={{
-            height: props.height,
+            height: heightStyle,
+            ...(heightCss ? { height: heightCss } : null),
+            width: '100%',
             background: 'var(--bg2)',
             display: 'grid',
             placeItems: 'center',
