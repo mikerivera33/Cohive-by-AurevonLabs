@@ -7,6 +7,7 @@
  * Cohive extension on top.
  */
 import { sanitizeImportText } from '../lib/sanitize';
+import { clampLat, clampLng } from '../lib/coords';
 import { gazetteer } from './seed';
 import type {
   Category,
@@ -31,16 +32,24 @@ const PACE: Record<string, { dwell: number; maxSpots: number }> = {
 
 const TRAVEL_KMH = 18;
 const TRANSFER_BUFFER = 8;
+/** Hard caps so adversarial / fuzzed inputs cannot explode clustering cost. */
+const MAX_PLAN_DAYS = 14;
+const MAX_PLAN_SPOTS = 400;
 
 export function haversineKm(a: LatLng, b: LatLng): number {
   const R = 6371;
+  const lat1 = clampLat(a.lat);
+  const lng1 = clampLng(a.lng);
+  const lat2 = clampLat(b.lat);
+  const lng2 = clampLng(b.lng);
   const rad = (d: number) => (d * Math.PI) / 180;
-  const dLat = rad(b.lat - a.lat);
-  const dLng = rad(b.lng - a.lng);
+  const dLat = rad(lat2 - lat1);
+  const dLng = rad(lng2 - lng1);
   const s =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
+    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const out = 2 * R * Math.asin(Math.min(1, Math.sqrt(Math.max(0, s))));
+  return Number.isFinite(out) ? out : 0;
 }
 
 const travelMinutes = (a: LatLng, b: LatLng) =>
@@ -194,20 +203,35 @@ function scheduleDay(cluster: Spot[], opts: PlanOpts, dayIndex: number): Schedul
 }
 
 export function planTrip(spots: Spot[], opts: PlanOpts): TripPlan {
-  const active = spots.filter((s) => !s.skipped && s.category !== 'hotel');
-  const clusters = clusterByDay(active, opts.days);
-  const days: PlanDay[] = [];
+  const days = Math.max(1, Math.min(MAX_PLAN_DAYS, Math.floor(Number(opts.days) || 1)));
+  const pace = opts.pace === 'relaxed' || opts.pace === 'packed' ? opts.pace : 'balanced';
+  const startHour = Number.isFinite(opts.startHour) ? opts.startHour : 9;
+  const endHour = Number.isFinite(opts.endHour) ? opts.endHour : 21;
+  const safeOpts: PlanOpts = { days, pace, startHour, endHour };
+
+  const active = spots
+    .filter((s) => !s.skipped && s.category !== 'hotel')
+    .slice(0, MAX_PLAN_SPOTS)
+    .map((s) => ({
+      ...s,
+      lat: clampLat(s.lat),
+      lng: clampLng(s.lng),
+      duration: Number.isFinite(s.duration) ? Math.max(0, Math.min(24 * 60, s.duration)) : 60,
+      cost: Number.isFinite(s.cost) ? Math.max(0, s.cost) : 0,
+    }));
+  const clusters = clusterByDay(active, days);
+  const planDays: PlanDay[] = [];
   // Carry only ids between days so overflow Spot refs do not pin the full
   // input array alive across long solve loops (stress / batch planning).
   let carryIds: number[] = [];
   const byId = new Map(active.map((s) => [s.id, s]));
 
-  for (let i = 0; i < opts.days; i++) {
+  for (let i = 0; i < days; i++) {
     const carried = carryIds.map((id) => byId.get(id)).filter((s): s is Spot => !!s);
     const pool = carried.concat(clusters[i] || []);
-    const scheduled = scheduleDay(pool, opts, i);
+    const scheduled = scheduleDay(pool, safeOpts, i);
     carryIds = scheduled.overflow.map((s) => s.id);
-    days.push({
+    planDays.push({
       day: scheduled.day,
       items: scheduled.items,
       warnings: scheduled.warnings,
@@ -218,10 +242,10 @@ export function planTrip(spots: Spot[], opts: PlanOpts): TripPlan {
   const unplaced = carryIds.map((id) => byId.get(id)?.name).filter((n): n is string => !!n);
 
   return {
-    days,
+    days: planDays,
     unplaced,
-    totalCost: days.reduce((a, d) => a + d.cost, 0),
-    opts: { days: opts.days, pace: opts.pace, startHour: opts.startHour, endHour: opts.endHour },
+    totalCost: planDays.reduce((a, d) => a + d.cost, 0),
+    opts: { days, pace, startHour, endHour },
     generatedAt: new Date().toISOString(),
   };
 }
@@ -269,6 +293,12 @@ function detectSource(text: string): ScanSource {
   return 'note';
 }
 
+/** Lowercased gazetteer names — built once so scan loops do not re-lowercase. */
+const gazetteerLower = gazetteer.map((g) => ({
+  entry: g,
+  needle: g.name.toLowerCase(),
+}));
+
 function mkCandidate(
   name: string,
   text: string,
@@ -276,12 +306,14 @@ function mkCandidate(
   conf: number
 ): ScanCandidate {
   const h = hash(name.toLowerCase());
+  const baseLat = clampLat(ctx.lat);
+  const baseLng = clampLng(ctx.lng);
   return {
     name,
     category: catFor(name + ' ' + text),
     // Deterministic jitter around the hive's city until real geocoding lands.
-    lat: ctx.lat + ((h % 1000) / 1000) * 0.045 - 0.0225,
-    lng: ctx.lng + (((h >> 10) % 1000) / 1000) * 0.055 - 0.0275,
+    lat: clampLat(baseLat + ((h % 1000) / 1000) * 0.045 - 0.0225),
+    lng: clampLng(baseLng + (((h >> 10) % 1000) / 1000) * 0.055 - 0.0275),
     duration: 60,
     cost: 0,
     open: null,
@@ -299,14 +331,20 @@ export function scanImport(rawText: string, ctx: ScanContext): ScanResult {
   const out: ScanCandidate[] = [];
   // Short category probe string — avoid retaining the full paste in candidates.
   const catProbe = text.slice(0, 280);
+  const safeCtx: ScanContext = {
+    city: String(ctx.city || '').slice(0, 80),
+    lat: clampLat(ctx.lat),
+    lng: clampLng(ctx.lng),
+  };
 
-  for (const g of gazetteer) {
-    if (lower.includes(g.name.toLowerCase())) {
+  // Pre-lowercased needles — avoid re-allocating on every scan in long loops.
+  for (const { entry: g, needle } of gazetteerLower) {
+    if (lower.includes(needle)) {
       out.push({
         name: g.name,
         category: g.category,
-        lat: g.lat,
-        lng: g.lng,
+        lat: clampLat(g.lat),
+        lng: clampLng(g.lng),
         duration: g.duration,
         cost: g.cost,
         open: g.open,
@@ -315,6 +353,7 @@ export function scanImport(rawText: string, ctx: ScanContext): ScanResult {
         confidence: 97,
         matched: 'exact',
       });
+      if (out.length >= 4) break;
     }
   }
 
@@ -334,7 +373,7 @@ export function scanImport(rawText: string, ctx: ScanContext): ScanResult {
     }
     for (const p of phrases) {
       const kw = CATS.some(([re]) => re.test(p));
-      out.push(mkCandidate(p, catProbe, ctx, kw ? 84 : 68));
+      out.push(mkCandidate(p, catProbe, safeCtx, kw ? 84 : 68));
     }
   }
 
@@ -347,13 +386,13 @@ export function scanImport(rawText: string, ctx: ScanContext): ScanResult {
       .trim();
     if (words && !/^\d+$/.test(words) && words.length > 3) {
       const name = words.replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 48);
-      out.push(mkCandidate(name, catProbe, ctx, 61));
+      out.push(mkCandidate(name, catProbe, safeCtx, 61));
     }
   }
 
   if (!out.length) {
     out.push({
-      ...mkCandidate('Concierge pick — ' + (ctx.city || 'nearby'), catProbe, ctx, 55),
+      ...mkCandidate('Concierge pick — ' + (safeCtx.city || 'nearby'), catProbe, safeCtx, 55),
       matched: 'assist',
     });
   }

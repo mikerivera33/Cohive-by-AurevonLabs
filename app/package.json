@@ -16,8 +16,10 @@
     "sync": "npm run build && cap sync",
     "ios": "npm run sync && cap open ios",
     "android": "npm run sync && cap open android",
-    "stress:engine": "esbuild scripts/stress-engine.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/stress-engine.mjs --log-level=error && node node_modules/.cache/stress-engine.mjs",
+    "stress:engine": "esbuild scripts/stress-engine.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/stress-engine.mjs --log-level=error && node --expose-gc node_modules/.cache/stress-engine.mjs",
     "stress": "node scripts/stress-browser.mjs",
+    "heap:engine": "node --expose-gc scripts/heap-probe.mjs",
+    "build:single": "vite build --config vite.single.config.ts && node scripts/inline-single.mjs",
     "a11y": "node scripts/a11y.mjs",
     "api": "npm run build:server && node server.mjs",
     "start": "npm run build:server && node server.mjs"

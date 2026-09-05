@@ -64,6 +64,19 @@ const STAGE_MS = 520;
 /** How long the scanner spends "reading" before resolving. */
 const SCAN_MS = 1100;
 
+/** Bound feed growth under spam / stress so session state cannot run away. */
+const ACTIVITY_CAP = 40;
+const ADDED_IDS_CAP = 200;
+
+function prependActivity(prev: ActivityItem[], item: ActivityItem): ActivityItem[] {
+  return [item, ...prev].slice(0, ACTIVITY_CAP);
+}
+
+function appendAddedId(prev: string[], name: string): string[] {
+  const next = prev.includes(name) ? prev : [...prev, name];
+  return next.length > ADDED_IDS_CAP ? next.slice(-ADDED_IDS_CAP) : next;
+}
+
 interface AppStore {
   /* appearance */
   light: boolean;
@@ -369,11 +382,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           try {
             const { spot } = await apiAddSpot(tripId, c, source);
             setSpots((prev) => [...prev, spot]);
-            setAddedIds((prev) => [...prev, c.name]);
-            setActivity((prev) => [
-              { who: 'You', what: 'imported ' + c.name, when: 'just now' },
-              ...prev,
-            ]);
+            setAddedIds((prev) => appendAddedId(prev, c.name));
+            setActivity((prev) =>
+              prependActivity(prev, { who: 'You', what: 'imported ' + c.name, when: 'just now' })
+            );
             say('Saved to ' + tripMeta.name);
           } catch {
             say('Could not save spot');
@@ -400,11 +412,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           note: c.matched === 'exact' ? '' : 'Confirmed from scan',
         },
       ]);
-      setAddedIds((prev) => [...prev, c.name]);
-      setActivity((prev) => [
-        { who: 'You', what: 'imported ' + c.name, when: 'just now' },
-        ...prev,
-      ]);
+      setAddedIds((prev) => appendAddedId(prev, c.name));
+      setActivity((prev) =>
+        prependActivity(prev, { who: 'You', what: 'imported ' + c.name, when: 'just now' })
+      );
       say('Saved to ' + tripMeta.name);
     },
     [say, tripMeta.name]
@@ -477,10 +488,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 color: member.color,
               },
             ]);
-            setActivity((prev) => [
-              { who: 'You', what: 'invited ' + name + ' to the hive', when: 'just now' },
-              ...prev,
-            ]);
+            setActivity((prev) =>
+              prependActivity(prev, {
+                who: 'You',
+                what: 'invited ' + name + ' to the hive',
+                when: 'just now',
+              })
+            );
             say(name + ' invited');
           } catch (e) {
             say(e instanceof ApiError && e.code === 'forbidden' ? 'Not a hive member' : 'Invite failed');
@@ -489,10 +503,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
       setMembers((prev) => [...prev, { id: Date.now(), name, color: '#60A5FA' }]);
-      setActivity((prev) => [
-        { who: 'You', what: 'invited ' + name + ' to the hive', when: 'just now' },
-        ...prev,
-      ]);
+      setActivity((prev) =>
+        prependActivity(prev, {
+          who: 'You',
+          what: 'invited ' + name + ' to the hive',
+          when: 'just now',
+        })
+      );
       say(name + ' invited');
     },
     [say]

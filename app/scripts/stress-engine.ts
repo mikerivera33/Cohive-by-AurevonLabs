@@ -184,4 +184,54 @@ ok('scanImport averages under 2ms on 10KB captions', () => {
   assert.ok(avg < 2, `avg ${avg.toFixed(2)}ms`);
 });
 
+/* ── load curve + heap (requires node --expose-gc) ─────────────── */
+console.log('\nload curve + heap');
+const heapMB = (): number => {
+  const g = (globalThis as { gc?: () => void }).gc;
+  if (typeof g === 'function') g();
+  return process.memoryUsage().heapUsed / 1048576;
+};
+
+ok('3000 consecutive planTrip solves stay under load-curve budget', () => {
+  const spots = Array.from({ length: 80 }, (_, i) => randomSpot(40000 + i));
+  const opts = { days: 5, pace: 'balanced' as Pace, startHour: 9, endHour: 21 };
+  // Warm + force a baseline after nursery churn settles.
+  for (let i = 0; i < 40; i++) planTrip(spots, opts);
+  const h0 = heapMB();
+  const t0 = performance.now();
+  let last: TripPlan | null = null;
+  const samples: number[] = [];
+  for (let i = 0; i < 3000; i++) {
+    const s0 = performance.now();
+    last = planTrip(spots, opts);
+    if (i % 500 === 499) samples.push(performance.now() - s0);
+  }
+  last = null;
+  const elapsed = performance.now() - t0;
+  const h1 = heapMB();
+  const delta = h1 - h0;
+  console.log(
+    `      3000 solves: ${elapsed.toFixed(0)}ms total · p500 samples ${samples
+      .map((m) => m.toFixed(2) + 'ms')
+      .join(', ')} · heap ${h0.toFixed(1)}→${h1.toFixed(1)} MB (Δ ${delta.toFixed(1)})`
+  );
+  assert.ok(elapsed < 8000, `3000 solves took ${elapsed.toFixed(0)}ms`);
+  assert.ok(delta < 15, `heap grew ${delta.toFixed(1)} MB over 3000 solves`);
+});
+
+ok('3000 consecutive scanImport calls do not retain heap', () => {
+  const big = 'Tokyo Tower Shibuya Ramen '.repeat(400);
+  for (let i = 0; i < 40; i++) scanImport(big + i, CTX);
+  const h0 = heapMB();
+  let last: ReturnType<typeof scanImport> | null = null;
+  for (let i = 0; i < 3000; i++) {
+    last = scanImport(big + ' run ' + i, CTX);
+  }
+  last = null;
+  const h1 = heapMB();
+  const delta = h1 - h0;
+  console.log(`      3000 scans: heap ${h0.toFixed(1)}→${h1.toFixed(1)} MB (Δ ${delta.toFixed(1)})`);
+  assert.ok(delta < 15, `heap grew ${delta.toFixed(1)} MB over 3000 scans`);
+});
+
 console.log(`\n${checks} stress checks passed.\n`);
