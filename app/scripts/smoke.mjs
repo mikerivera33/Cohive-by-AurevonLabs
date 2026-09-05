@@ -95,6 +95,22 @@ await check('home map initialises with a marker per spot', async () => {
   const pins = await page.locator('#map-home path.leaflet-interactive').count();
   if (pins !== 15) throw new Error('expected 15 pins, got ' + pins);
 });
+await check('tap map preview opens fullscreen with all saved places', async () => {
+  await page.getByRole('button', { name: 'Open fullscreen map of all saved places' }).first().click();
+  await page.waitForSelector('#map-fullscreen.leaflet-container', { timeout: 8000 });
+  await page.waitForSelector('#map-fullscreen .leaflet-tile', { state: 'attached', timeout: 8000 });
+  await has('All saved places');
+  const pins = await page.locator('#map-fullscreen path.leaflet-interactive').count();
+  // 15 trip spots + 5 nest listings + 8 table restaurants
+  if (pins !== 28) throw new Error('expected 28 fullscreen pins, got ' + pins);
+});
+await check('Escape closes fullscreen map', async () => {
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  if (await page.locator('#map-fullscreen').count()) {
+    throw new Error('fullscreen map still present after Escape');
+  }
+});
 await check('activity feed', () => has('Hive activity'));
 await check('plan badge shows Free', () => has('Free'));
 
