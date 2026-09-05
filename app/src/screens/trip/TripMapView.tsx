@@ -95,21 +95,25 @@ export function TripMapView() {
         />
         <div style={{ display: 'flex', gap: 9, marginTop: 11, alignItems: 'center' }}>
           <button
+            type="button"
             className="press ctaBtn"
             onClick={scan}
-            style={{ ...press(0.96), borderRadius: 999, padding: '12px 22px', fontSize: 12, letterSpacing: '.09em' }}
+            style={{ ...press(0.96), borderRadius: 999, minHeight: 44, padding: '12px 22px', fontSize: 12, letterSpacing: '.09em' }}
           >
             Scan &amp; detect
           </button>
           <button
-            className="grot"
+            type="button"
+            className="press grot"
             onClick={() => setScanText(SAMPLE)}
             style={{
+              ...press(0.95),
               background: 'none',
               border: '1px solid var(--lineB)',
               color: 'var(--soft)',
               borderRadius: 999,
-              padding: '11px 14px',
+              minHeight: 44,
+              padding: '11px 16px',
               fontWeight: 600,
               fontSize: 11,
               letterSpacing: '.06em',

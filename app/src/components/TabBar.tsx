@@ -11,46 +11,22 @@ const TABS: [TabId, string, string][] = [
 ];
 
 export function TabBar() {
-  const { tab, setTab, light } = useApp();
+  const { tab, setTab } = useApp();
 
   return (
-    <nav
-      style={{
-        position: 'absolute',
-        left: 14,
-        right: 14,
-        bottom: 'var(--safe-bottom, 26px)',
-        zIndex: 30,
-        display: 'flex',
-        background: light ? 'rgba(255, 255, 255, 0.72)' : 'rgba(10, 18, 36, 0.55)',
-        backdropFilter: 'blur(28px) saturate(1.35)',
-        WebkitBackdropFilter: 'blur(28px) saturate(1.35)',
-        border: '1px solid var(--lineB)',
-        borderRadius: 999,
-        padding: 5,
-        boxShadow: 'var(--shadow)',
-      }}
-    >
+    <nav className="tabBar" aria-label="Primary">
       {TABS.map(([id, label, clip]) => {
         const on = tab === id;
         return (
           <button
             key={id}
-            className="press"
+            type="button"
+            className="press tabBarBtn"
             onClick={() => setTab(id)}
             aria-current={on ? 'page' : undefined}
+            aria-label={label}
             style={{
               ...press(0.92),
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 4,
-              padding: '10px 0 9px',
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: 999,
-              transition: 'all .28s cubic-bezier(.2,.85,.25,1.1)',
               background: on ? 'var(--grad)' : 'transparent',
               color: on ? 'var(--onGrad)' : 'var(--soft)',
               boxShadow: on ? 'var(--glow)' : 'none',

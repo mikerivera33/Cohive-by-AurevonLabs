@@ -55,6 +55,7 @@ function AccountRows({ accounts }: { accounts: Account[] }) {
             />
             {name}
             <button
+              type="button"
               className="press grot"
               onClick={() => (connectionsUnlocked ? toggleLink(name) : openPricing())}
               aria-pressed={connectionsUnlocked ? on : undefined}
@@ -63,7 +64,8 @@ function AccountRows({ accounts }: { accounts: Account[] }) {
                 marginLeft: 'auto',
                 flexShrink: 0,
                 borderRadius: 99,
-                padding: '5px 12px',
+                minHeight: 44,
+                padding: '8px 14px',
                 fontSize: 10.5,
                 fontWeight: 600,
                 cursor: 'pointer',
@@ -144,6 +146,7 @@ export function YouTab() {
         </div>
         <p style={{ fontSize: 12.5, color: 'var(--soft)', margin: '6px 0 12px' }}>{planSub}</p>
         <button
+          type="button"
           className="press ctaBtn"
           onClick={openPricing}
           style={{ ...press(0.96), borderRadius: 999, padding: '12px 20px', fontSize: 11.5, letterSpacing: '.09em' }}
@@ -214,16 +217,19 @@ export function YouTab() {
           <span style={{ color: 'var(--honey)' }}>⬡</span> Every paid plan includes a permanent referral code
           — 10% commission on each paid signup.
           <button
-            className="grot"
+            type="button"
+            className="press grot"
             onClick={openPricing}
             style={{
+              ...press(0.95),
               marginLeft: 'auto',
               flexShrink: 0,
               background: 'none',
               border: '1px solid var(--lineB)',
               color: 'var(--honey)',
               borderRadius: 99,
-              padding: '6px 12px',
+              minHeight: 44,
+              padding: '8px 14px',
               fontWeight: 600,
               fontSize: 10.5,
               cursor: 'pointer',
@@ -258,6 +264,7 @@ export function YouTab() {
       >
         Light mode
         <button
+          type="button"
           className="press"
           onClick={toggleTheme}
           role="switch"
@@ -266,8 +273,9 @@ export function YouTab() {
           style={{
             ...press(0.95),
             marginLeft: 'auto',
-            width: 46,
-            height: 27,
+            width: 52,
+            height: 32,
+            minHeight: 44,
             borderRadius: 99,
             border: '1px solid var(--lineB)',
             background: light ? 'var(--grad)' : 'var(--bg2)',
@@ -275,15 +283,17 @@ export function YouTab() {
             position: 'relative',
             transition: 'background .25s ease',
             padding: 0,
+            boxSizing: 'content-box',
           }}
         >
           <span
             style={{
               position: 'absolute',
-              top: 2.5,
-              left: light ? 22 : 3,
-              width: 19,
-              height: 19,
+              top: '50%',
+              left: light ? 26 : 4,
+              marginTop: -10,
+              width: 20,
+              height: 20,
               borderRadius: 99,
               background: '#fff',
               transition: 'left .25s cubic-bezier(.2,.9,.25,1.2)',
@@ -294,8 +304,11 @@ export function YouTab() {
         </button>
       </div>
       <button
+        type="button"
+        className="press"
         onClick={replayOnboarding}
         style={{
+          ...press(0.98),
           display: 'block',
           width: '100%',
           textAlign: 'left',
@@ -303,7 +316,8 @@ export function YouTab() {
           border: 'none',
           borderBottom: '1px solid var(--line)',
           color: 'var(--ink)',
-          padding: '13px 2px',
+          minHeight: 48,
+          padding: '14px 2px',
           fontSize: 13.5,
           fontFamily: "'Outfit', system-ui, sans-serif",
           cursor: 'pointer',

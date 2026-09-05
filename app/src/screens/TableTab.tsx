@@ -144,6 +144,7 @@ export function TableTab() {
 
             <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
               <button
+                type="button"
                 className="press ctaBtn"
                 onClick={() => onReserve(t.name)}
                 style={{
@@ -152,7 +153,8 @@ export function TableTab() {
                   alignItems: 'center',
                   gap: 5,
                   borderRadius: 999,
-                  padding: '8px 14px',
+                  minHeight: 44,
+                  padding: '10px 16px',
                   fontSize: 10.5,
                   letterSpacing: '.07em',
                 }}
@@ -168,7 +170,7 @@ export function TableTab() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="ghostBtn"
-                style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '7px 14px', letterSpacing: '.05em' }}
+                style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, minHeight: 44, padding: '10px 16px', letterSpacing: '.05em' }}
               >
                 Yelp
               </a>
@@ -177,14 +179,16 @@ export function TableTab() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="ghostBtn"
-                style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '7px 14px', letterSpacing: '.05em' }}
+                style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, minHeight: 44, padding: '10px 16px', letterSpacing: '.05em' }}
               >
                 Maps
               </a>
               <button
-                className="grot"
+                type="button"
+                className="press grot"
                 onClick={() => say(t.name + ' linked to your next open trip day')}
                 style={{
+                  ...press(0.95),
                   background: 'none',
                   border: 'none',
                   color: 'var(--honey)',
@@ -193,7 +197,9 @@ export function TableTab() {
                   letterSpacing: '.05em',
                   textTransform: 'uppercase',
                   cursor: 'pointer',
-                  padding: '7px 4px',
+                  minHeight: 44,
+                  padding: '10px 8px',
+                  borderRadius: 999,
                 }}
               >
                 + Trip day

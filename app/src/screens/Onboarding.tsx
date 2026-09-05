@@ -33,10 +33,12 @@ const PANE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   justifyContent: 'center',
-  padding: '40px 28px',
+  padding: 'calc(var(--safe-top, 16px) + 24px) 28px calc(var(--safe-bottom, 16px) + 28px)',
   position: 'relative',
   zIndex: 2,
   animation: 'cvrise .5s var(--ease-out) both',
+  overflowY: 'auto',
+  WebkitOverflowScrolling: 'touch',
 };
 
 const KICKER: CSSProperties = {
@@ -49,8 +51,23 @@ const KICKER: CSSProperties = {
 
 const CTA: CSSProperties = {
   borderRadius: 999,
-  padding: '16px 22px',
+  padding: '14px 22px',
   fontSize: 13.5,
+  minHeight: 48,
+};
+
+const SKIP: CSSProperties = {
+  marginLeft: 'auto',
+  background: 'none',
+  border: 'none',
+  color: 'var(--soft)',
+  fontFamily: "'Outfit', system-ui, sans-serif",
+  fontSize: 13,
+  cursor: 'pointer',
+  minWidth: 44,
+  minHeight: 44,
+  padding: '10px 8px',
+  borderRadius: 999,
 };
 
 function looksLikeEmail(v: string) {
@@ -237,7 +254,15 @@ export function Onboarding() {
       <HexField />
 
       {step === 'gateway' && (
-        <div className="gw-pane" style={{ ...PANE, justifyContent: 'flex-end', paddingBottom: 36 }}>
+        <div
+          className="gw-pane"
+          style={{
+            ...PANE,
+            justifyContent: 'flex-end',
+            paddingTop: 'calc(var(--safe-top, 16px) + 8px)',
+            paddingBottom: 'calc(var(--safe-bottom, 16px) + 20px)',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 'auto', paddingTop: 8 }}>
             <div
               className="hex"
@@ -264,20 +289,7 @@ export function Onboarding() {
                 by AurevonLabs
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => finishOnboarding()}
-              style={{
-                marginLeft: 'auto',
-                background: 'none',
-                border: 'none',
-                color: 'var(--soft)',
-                fontFamily: "'Outfit', system-ui, sans-serif",
-                fontSize: 13,
-                cursor: 'pointer',
-                padding: '8px 4px',
-              }}
-            >
+            <button type="button" className="press" onClick={() => finishOnboarding()} style={SKIP}>
               Skip
             </button>
           </div>
@@ -355,6 +367,7 @@ export function Onboarding() {
         <div style={PANE}>
           <button
             type="button"
+            className="press"
             onClick={() => setStep('gateway')}
             style={{
               alignSelf: 'flex-start',
@@ -365,7 +378,9 @@ export function Onboarding() {
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
-              padding: '0 0 18px',
+              minHeight: 44,
+              padding: '10px 4px 18px',
+              borderRadius: 999,
             }}
           >
             ← Back
@@ -421,7 +436,7 @@ export function Onboarding() {
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
-            padding: 'calc(var(--safe-top, 42px) + 22px) 30px 40px',
+            padding: 'calc(var(--safe-top, 42px) + 22px) 30px calc(var(--safe-bottom, 16px) + 28px)',
             position: 'relative',
             zIndex: 2,
           }}
@@ -438,20 +453,7 @@ export function Onboarding() {
                 by AurevonLabs
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => finishOnboarding()}
-              style={{
-                marginLeft: 'auto',
-                background: 'none',
-                border: 'none',
-                color: 'var(--soft)',
-                fontFamily: "'Outfit', system-ui, sans-serif",
-                fontSize: 13,
-                cursor: 'pointer',
-                padding: '8px 4px',
-              }}
-            >
+            <button type="button" className="press" onClick={() => finishOnboarding()} style={SKIP}>
               Skip
             </button>
           </div>
@@ -496,19 +498,40 @@ export function Onboarding() {
             </p>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 34 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 34 }}>
             {SLIDES.map((_, i) => (
-              <div
+              <button
                 key={i}
-                aria-hidden
+                type="button"
+                className="press"
+                aria-label={`Go to slide ${i + 1}`}
+                aria-current={i === slide ? 'true' : undefined}
+                onClick={() => setSlide(i)}
                 style={{
-                  width: i === slide ? 26 : 8,
-                  height: 8,
-                  borderRadius: 99,
-                  background: i === slide ? 'var(--grad)' : 'var(--lineB)',
-                  transition: 'all .35s var(--ease-spring)',
+                  ...press(0.9),
+                  width: 44,
+                  height: 44,
+                  border: 'none',
+                  padding: 0,
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  display: 'grid',
+                  placeItems: 'center',
+                  flexShrink: 0,
                 }}
-              />
+              >
+                <span
+                  aria-hidden
+                  style={{
+                    width: i === slide ? 26 : 8,
+                    height: 8,
+                    borderRadius: 99,
+                    background: i === slide ? 'var(--grad)' : 'var(--lineB)',
+                    display: 'block',
+                    transition: 'all .35s var(--ease-spring)',
+                  }}
+                />
+              </button>
             ))}
             <button
               type="button"
@@ -599,14 +622,17 @@ export function Onboarding() {
             />
             <button
               type="button"
-              className="grot"
+              className="press grot tapTarget"
               onClick={addInvite}
               aria-label="Add invitee"
               style={{
+                ...press(0.94),
                 background: 'var(--panelS)',
                 border: '1px solid var(--lineB)',
                 color: 'var(--honey)',
                 borderRadius: 'var(--r-sm)',
+                minWidth: 48,
+                minHeight: 48,
                 padding: '0 18px',
                 fontWeight: 700,
                 fontSize: 18,

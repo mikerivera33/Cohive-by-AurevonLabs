@@ -50,7 +50,7 @@ export const memberDot = (c: string): CSSProperties => ({
   marginTop: 4,
 });
 
-/** Pill filter chip — filled when selected. */
+/** Pill filter chip — filled when selected. ≥44px tall for iOS targets. */
 export const chipStyle = (on: boolean, color?: string): CSSProperties => ({
   fontFamily: "'Space Grotesk', system-ui, sans-serif",
   fontWeight: 600,
@@ -58,9 +58,13 @@ export const chipStyle = (on: boolean, color?: string): CSSProperties => ({
   letterSpacing: '.06em',
   textTransform: 'uppercase',
   borderRadius: 99,
-  padding: '7px 13px',
+  minHeight: 44,
+  padding: '10px 16px',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
   transition: 'all .22s cubic-bezier(.2,.85,.25,1.1)',
   border: on ? 'none' : '1px solid var(--lineB)',
   background: on ? color || 'var(--grad)' : 'transparent',
