@@ -71,7 +71,7 @@ export function FullscreenMap({ open, onClose, markers, light }: FullscreenMapPr
       ref={panelRef}
       tabIndex={-1}
     >
-      <header className="mapFullscreen__bar">
+      <div className="mapFullscreen__bar">
         <button type="button" className="press grot mapFullscreen__back" onClick={onClose} aria-label="Close map">
           ← Back
         </button>
@@ -81,7 +81,7 @@ export function FullscreenMap({ open, onClose, markers, light }: FullscreenMapPr
             {markers.length} pin{markers.length === 1 ? '' : 's'} · Trip, Nest &amp; Table
           </p>
         </div>
-      </header>
+      </div>
 
       <div className="mapFullscreen__stage">
         <LazyMap
@@ -96,11 +96,11 @@ export function FullscreenMap({ open, onClose, markers, light }: FullscreenMapPr
         />
       </div>
 
-      <footer className="mapFullscreen__legend">
+      <div className="mapFullscreen__legend">
         <LegendDot color="var(--honey)" label={`Trip ${tripN}`} />
         <LegendDot color={NEST_MARKER_COLOR} label={`Nest ${nestN}`} />
         <LegendDot color={TABLE_MARKER_COLOR} label={`Table ${tableN}`} />
-      </footer>
+      </div>
     </div>,
     host
   );
