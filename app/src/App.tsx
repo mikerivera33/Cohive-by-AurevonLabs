@@ -22,7 +22,7 @@ function Shell() {
     document.documentElement.style.colorScheme = light ? 'light' : 'dark';
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', light ? '#FAF6EE' : '#0A0F1C');
+      ?.setAttribute('content', light ? '#EEF5FC' : '#060B18');
   }, [light]);
 
   // Switching tab or trip sub-view should start at the top, not mid-scroll.
@@ -45,6 +45,10 @@ function Shell() {
           overflow: 'hidden',
         }}
       >
+        <div className="cv-atmosphere" aria-hidden>
+          <div className="cv-atmosphere__orb" />
+        </div>
+
         {!onboarded && <Onboarding />}
 
         {onboarded && (
@@ -61,13 +65,16 @@ function Shell() {
                 WebkitOverflowScrolling: 'touch',
                 padding: '16px 18px 130px',
                 position: 'relative',
+                zIndex: 1,
               }}
             >
-              {tab === 'home' && <HomeTab />}
-              {tab === 'trip' && <TripTab />}
-              {tab === 'nest' && <NestTab />}
-              {tab === 'table' && <TableTab />}
-              {tab === 'you' && <YouTab />}
+              <div key={tab + ':' + tripView} className="tabPane">
+                {tab === 'home' && <HomeTab />}
+                {tab === 'trip' && <TripTab />}
+                {tab === 'nest' && <NestTab />}
+                {tab === 'table' && <TableTab />}
+                {tab === 'you' && <YouTab />}
+              </div>
             </main>
 
             <TabBar />

@@ -23,15 +23,7 @@ export function TripMapView() {
 
   return (
     <>
-      <div
-        style={{
-          position: 'relative',
-          border: '1px solid var(--lineB)',
-          borderRadius: 18,
-          overflow: 'hidden',
-          boxShadow: 'var(--shadow)',
-        }}
-      >
+      <div className="softFrame" style={{ position: 'relative' }}>
         <LazyMap id="map-trip" center={TOKYO_CENTER} zoom={11} markers={markers} height={240} light={light} />
         <div
           className="panelCard"
@@ -42,10 +34,11 @@ export function TripMapView() {
             zIndex: 400,
             display: 'flex',
             gap: 12,
-            borderRadius: 12,
+            borderRadius: 16,
             padding: '8px 14px',
             fontSize: 11,
             color: 'var(--soft)',
+            boxShadow: 'none',
           }}
         >
           <span>
@@ -232,7 +225,7 @@ export function TripMapView() {
                           width: c.confidence + '%',
                           height: '100%',
                           background:
-                            c.confidence > 80 ? 'var(--grad)' : 'linear-gradient(120deg,#FBBF24,#E2691B)',
+                            c.confidence > 80 ? 'var(--grad)' : 'linear-gradient(120deg,#8FD0FF,#1B4FD8)',
                           borderRadius: 99,
                           transition: 'width .6s ease',
                         }}

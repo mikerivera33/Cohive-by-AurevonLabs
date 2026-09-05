@@ -73,7 +73,7 @@ export function CrewView() {
             fontSize: 13.5,
           }}
         >
-          <span style={memberDot(members.find((m) => m.name === a.who)?.color || '#F5A524')} />
+          <span style={memberDot(members.find((m) => m.name === a.who)?.color || '#4EB4FF')} />
           <span style={{ color: 'var(--soft)' }}>
             <b style={{ color: 'var(--ink)', fontWeight: 600 }}>{a.who}</b> {a.what}
             <span style={{ display: 'block', fontSize: 11, marginTop: 2 }}>{a.when}</span>

@@ -46,7 +46,7 @@ const KICKER: CSSProperties = {
 };
 
 const CTA: CSSProperties = {
-  borderRadius: 14,
+  borderRadius: 18,
   padding: 16,
   fontSize: 13.5,
 };

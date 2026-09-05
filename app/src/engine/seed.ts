@@ -133,7 +133,7 @@ export const NYC_NEST_CENTER: [number, number] = [40.71, -73.96];
 export const NYC_TABLE_CENTER: [number, number] = [40.725, -73.985];
 
 export const members: Member[] = [
-  { id: 1, name: 'You', color: '#F5A524' },
+  { id: 1, name: 'You', color: '#4EB4FF' },
   { id: 2, name: 'Maya', color: '#A78BFA' },
   { id: 3, name: 'Ben', color: '#34D399' },
 ];

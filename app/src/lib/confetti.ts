@@ -1,4 +1,4 @@
-const COLORS = ['#F6B93B', '#E2691B', '#A78BFA', '#34D399', '#F472B6'];
+const COLORS = ['#6EC4FF', '#1B4FD8', '#8FD0FF', '#A78BFA', '#34D399', '#F472B6'];
 
 /** Short amber burst for a locked-in vote. No-ops when the user prefers reduced motion. */
 export function fireConfetti(): void {

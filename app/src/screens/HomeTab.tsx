@@ -41,7 +41,7 @@ export function HomeTab() {
       desc: 'Sep 1–4 · itinerary in progress',
       accent: 'var(--honey)',
       tab: 'trip',
-      dots: ['#F5A524', '#A78BFA', '#34D399'],
+      dots: ['#4EB4FF', '#A78BFA', '#34D399'],
       stat1: String(spots.length),
       stat1l: 'spots',
       stat2: String(spots.filter((x) => x.tier === 'must').length),
@@ -53,7 +53,7 @@ export function HomeTab() {
       desc: 'NYC · 2BRs under $4k trending',
       accent: '#A78BFA',
       tab: 'nest',
-      dots: ['#F5A524', '#A78BFA'],
+      dots: ['#4EB4FF', '#A78BFA'],
       stat1: String(nest.length),
       stat1l: 'listings',
       stat2: String(nest.reduce((a, n) => a + n.reactions['💍'].length, 0)),
@@ -65,7 +65,7 @@ export function HomeTab() {
       desc: 'Lilia is winning the vote',
       accent: '#F472B6',
       tab: 'table',
-      dots: ['#F5A524', '#A78BFA'],
+      dots: ['#4EB4FF', '#A78BFA'],
       stat1: String(table.length),
       stat1l: 'places',
       stat2: String(table.filter((t) => t.tried).length),
@@ -82,16 +82,7 @@ export function HomeTab() {
         Three hives are buzzing. Here’s where the plans stand.
       </p>
 
-      <div
-        style={{
-          position: 'relative',
-          border: '1px solid var(--lineB)',
-          borderRadius: 18,
-          overflow: 'hidden',
-          boxShadow: 'var(--shadow)',
-          marginBottom: 16,
-        }}
-      >
+      <div className="softFrame" style={{ position: 'relative', marginBottom: 16 }}>
         <LazyMap id="map-home" center={TOKYO_CENTER} zoom={11} markers={markers} height={180} light={light} />
         <div
           className="panelCard"
@@ -103,10 +94,11 @@ export function HomeTab() {
             display: 'flex',
             gap: 12,
             alignItems: 'baseline',
-            borderRadius: 12,
-            padding: '7px 13px',
+            borderRadius: 16,
+            padding: '8px 14px',
             fontSize: 11,
             color: 'var(--soft)',
+            boxShadow: 'none',
           }}
         >
           <b className="grot" style={{ fontSize: 12, color: 'var(--honey)' }}>
@@ -131,16 +123,25 @@ export function HomeTab() {
             style={{
               ...press(0.98),
               textAlign: 'left',
-              borderRadius: 18,
-              padding: '17px 18px',
+              borderRadius: 24,
+              padding: '18px 18px',
               cursor: 'pointer',
               position: 'relative',
               overflow: 'hidden',
               color: 'var(--ink)',
               fontFamily: "'Outfit', system-ui, sans-serif",
+              border: '1px solid var(--line)',
             }}
           >
-            <div style={{ position: 'absolute', inset: '0 auto 0 0', width: 3, background: hv.accent }} />
+            <div
+              style={{
+                position: 'absolute',
+                inset: '0 auto 0 0',
+                width: 4,
+                borderRadius: '0 8px 8px 0',
+                background: hv.accent,
+              }}
+            />
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <div
                 className="hex"
@@ -228,7 +229,7 @@ export function HomeTab() {
             fontSize: 13.5,
           }}
         >
-          <span style={memberDot(members.find((m) => m.name === a.who)?.color || '#F5A524')} />
+          <span style={memberDot(members.find((m) => m.name === a.who)?.color || '#4EB4FF')} />
           <span style={{ color: 'var(--soft)' }}>
             <b style={{ color: 'var(--ink)', fontWeight: 600 }}>{a.who}</b> {a.what}
             <span style={{ display: 'block', fontSize: 11, marginTop: 2 }}>{a.when}</span>

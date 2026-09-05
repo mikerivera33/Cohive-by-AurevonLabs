@@ -4,8 +4,8 @@
   "description": "Trips, homes and dinners in one shared hive.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0A0F1C",
-  "theme_color": "#0A0F1C",
+  "background_color": "#060B18",
+  "theme_color": "#060B18",
   "icons": [
     {
       "src": "/icons/icon-1024.png",

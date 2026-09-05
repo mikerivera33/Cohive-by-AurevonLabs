@@ -37,8 +37,8 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
           gap: 14,
           padding: 30,
           textAlign: 'center',
-          background: '#0A0F1C',
-          color: '#EDEFF6',
+          background: '#060B18',
+          color: '#EDF2FA',
           fontFamily: "'Outfit', system-ui, sans-serif",
         }}
       >
@@ -47,24 +47,24 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
           style={{
             width: 44,
             height: 44,
-            background: 'linear-gradient(120deg,#F6B93B,#E2691B)',
+            background: 'linear-gradient(125deg,#6EC4FF,#1B4FD8)',
             clipPath: 'polygon(50% 0%,93% 25%,93% 75%,50% 100%,7% 75%,7% 25%)',
           }}
         />
         <b style={{ fontFamily: "'Space Grotesk', system-ui, sans-serif", fontSize: 20 }}>
           The hive hit a snag.
         </b>
-        <p style={{ margin: 0, fontSize: 14, color: '#8E97AB', maxWidth: '34ch', lineHeight: 1.5 }}>
+        <p style={{ margin: 0, fontSize: 14, color: '#8B98B0', maxWidth: '34ch', lineHeight: 1.5 }}>
           Something went wrong on our side. Your plans are safe — reload to pick up where you left off.
         </p>
         <button
           onClick={() => window.location.reload()}
           style={{
             marginTop: 6,
-            background: 'linear-gradient(120deg,#F6B93B,#E2691B)',
-            color: '#241303',
+            background: 'linear-gradient(125deg,#6EC4FF,#1B4FD8)',
+            color: '#041018',
             border: 'none',
-            borderRadius: 12,
+            borderRadius: 14,
             padding: '13px 26px',
             fontFamily: "'Space Grotesk', system-ui, sans-serif",
             fontWeight: 700,

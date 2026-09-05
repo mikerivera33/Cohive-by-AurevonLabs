@@ -7,15 +7,15 @@ const config: CapacitorConfig = {
   ios: {
     // The app paints its own dark navy chrome edge to edge.
     contentInset: 'never',
-    backgroundColor: '#0A0F1C',
+    backgroundColor: '#060B18',
   },
   android: {
-    backgroundColor: '#0A0F1C',
+    backgroundColor: '#060B18',
   },
   plugins: {
     StatusBar: {
       style: 'DARK',
-      backgroundColor: '#0A0F1C',
+      backgroundColor: '#060B18',
       overlaysWebView: true,
     },
   },

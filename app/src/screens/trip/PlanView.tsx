@@ -58,7 +58,7 @@ export function PlanView() {
         style={{
           background: 'var(--panel)',
           border: '1px solid var(--lineB)',
-          borderRadius: 18,
+          borderRadius: 24,
           padding: 16,
           marginBottom: 14,
         }}

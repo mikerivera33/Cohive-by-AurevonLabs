@@ -296,7 +296,7 @@ export function createStore(seed = null, options = {}) {
     members.push({
       userId: user.id,
       name: user.name,
-      color: '#F5A524',
+      color: '#4EB4FF',
       role: members.length ? 'member' : 'owner',
     });
     memberships.set(tripId, members);
@@ -493,7 +493,7 @@ export function createStore(seed = null, options = {}) {
       {
         userId,
         name: user?.name || 'You',
-        color: '#F5A524',
+        color: '#4EB4FF',
         role: 'owner',
       },
     ]);

@@ -41,15 +41,7 @@ export function NestTab() {
         NYC · you + Maya · {nest.length} listings saved
       </p>
 
-      <div
-        style={{
-          border: '1px solid var(--lineB)',
-          borderRadius: 18,
-          overflow: 'hidden',
-          boxShadow: 'var(--shadow)',
-          marginBottom: 14,
-        }}
-      >
+      <div className="softFrame" style={{ marginBottom: 14 }}>
         <LazyMap
           id="map-nest"
           center={NYC_NEST_CENTER}
@@ -67,14 +59,22 @@ export function NestTab() {
           style={{
             background: 'var(--panel)',
             border: '1px solid var(--line)',
-            borderRadius: 16,
+            borderRadius: 22,
             padding: '15px 16px',
             marginBottom: 11,
             position: 'relative',
             overflow: 'hidden',
           }}
         >
-          <div style={{ position: 'absolute', inset: '0 auto 0 0', width: 3, background: 'var(--violet)' }} />
+          <div
+            style={{
+              position: 'absolute',
+              inset: '0 auto 0 0',
+              width: 4,
+              borderRadius: '0 8px 8px 0',
+              background: 'var(--violet)',
+            }}
+          />
 
           {n.tagged && (
             <div
