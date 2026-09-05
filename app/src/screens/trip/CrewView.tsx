@@ -48,7 +48,7 @@ export function CrewView() {
             background: 'var(--panelS)',
             border: '1px solid var(--lineB)',
             color: 'var(--honey)',
-            borderRadius: 12,
+            borderRadius: 999,
             padding: '0 18px',
             fontWeight: 700,
             fontSize: 18,

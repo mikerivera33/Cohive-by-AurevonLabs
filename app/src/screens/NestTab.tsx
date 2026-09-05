@@ -58,7 +58,7 @@ export function NestTab() {
           style={{
             background: 'var(--panel)',
             border: '1px solid var(--line)',
-            borderRadius: 22,
+            borderRadius: 28,
             padding: '15px 16px',
             marginBottom: 11,
             position: 'relative',
@@ -129,7 +129,7 @@ export function NestTab() {
                     cursor: 'pointer',
                     transition: 'all .18s ease',
                     border: mine ? '1px solid var(--honey)' : '1px solid var(--line)',
-                    background: mine ? 'rgba(245,165,36,.12)' : 'transparent',
+                    background: mine ? 'rgba(78,180,255,.14)' : 'transparent',
                     color: 'var(--ink)',
                   }}
                 >

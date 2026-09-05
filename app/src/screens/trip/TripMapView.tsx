@@ -33,7 +33,7 @@ export function TripMapView() {
             zIndex: 400,
             display: 'flex',
             gap: 12,
-            borderRadius: 16,
+            borderRadius: 999,
             padding: '8px 14px',
             fontSize: 11,
             color: 'var(--soft)',
@@ -97,7 +97,7 @@ export function TripMapView() {
           <button
             className="press ctaBtn"
             onClick={scan}
-            style={{ ...press(0.96), borderRadius: 12, padding: '12px 20px', fontSize: 12, letterSpacing: '.09em' }}
+            style={{ ...press(0.96), borderRadius: 999, padding: '12px 22px', fontSize: 12, letterSpacing: '.09em' }}
           >
             Scan &amp; detect
           </button>
@@ -108,7 +108,7 @@ export function TripMapView() {
               background: 'none',
               border: '1px solid var(--lineB)',
               color: 'var(--soft)',
-              borderRadius: 12,
+              borderRadius: 999,
               padding: '11px 14px',
               fontWeight: 600,
               fontSize: 11,
@@ -179,7 +179,7 @@ export function TripMapView() {
                   style={{
                     background: 'var(--bg2)',
                     border: '1px solid var(--line)',
-                    borderRadius: 13,
+                    borderRadius: 999,
                     padding: '12px 13px',
                     marginBottom: 8,
                     animation: 'cvpop .35s ease both',

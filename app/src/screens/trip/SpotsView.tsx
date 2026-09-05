@@ -38,7 +38,7 @@ export function SpotsView() {
             background: 'var(--panel)',
             border: '1px solid var(--line)',
             borderLeft: `3px solid ${catColor(s.category)}`,
-            borderRadius: 14,
+            borderRadius: 22,
             padding: '13px 14px',
             marginBottom: 9,
           }}

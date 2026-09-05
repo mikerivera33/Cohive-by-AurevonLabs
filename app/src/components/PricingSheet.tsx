@@ -138,14 +138,14 @@ export function PricingSheet() {
         tabIndex={-1}
         style={{
           position: 'relative',
-          background: 'var(--bg)',
           border: '1px solid var(--lineB)',
-          borderRadius: '32px 32px 0 0',
+          borderRadius: '36px 36px 0 0',
           maxHeight: '82%',
           overflowY: 'auto',
           padding: '14px 20px 34px',
           animation: 'cvslide .48s cubic-bezier(.2,.85,.25,1.1) both',
           outline: 'none',
+          background: 'linear-gradient(180deg, var(--bg2), var(--bg))',
         }}
       >
         <div style={{ width: 38, height: 4, borderRadius: 99, background: 'var(--lineB)', margin: '0 auto 16px' }} />
@@ -166,11 +166,12 @@ export function PricingSheet() {
             style={{
               position: 'relative',
               background: p.featured ? 'var(--panelS)' : 'var(--panel)',
-              border: p.featured ? '1.5px solid var(--honey)' : '1px solid var(--lineB)',
+              border: p.featured ? '1.5px solid var(--honey)' : '1px solid var(--line)',
               boxShadow: p.featured ? 'var(--glow)' : 'none',
-              borderRadius: 22,
-              padding: '15px 16px',
+              borderRadius: 28,
+              padding: '16px 18px',
               marginBottom: 12,
+              backdropFilter: 'blur(16px)',
             }}
           >
             {p.featured && (
@@ -214,11 +215,11 @@ export function PricingSheet() {
                 ...press(0.97),
                 width: '100%',
                 marginTop: 10,
-                background: p.featured ? 'var(--grad)' : 'transparent',
+                background: p.featured ? 'var(--grad)' : 'rgba(78, 180, 255, 0.06)',
                 color: p.featured ? 'var(--onGrad)' : 'var(--honey)',
                 border: p.featured ? 'none' : '1px solid var(--lineB)',
-                borderRadius: 14,
-                padding: 11,
+                borderRadius: 999,
+                padding: '12px 16px',
                 fontWeight: 700,
                 fontSize: 11.5,
                 letterSpacing: '.08em',

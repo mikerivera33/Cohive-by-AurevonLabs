@@ -1,4 +1,4 @@
-/* Cohive design system — AurevonLabs blue, fluid surfaces, polished motion. */
+/* Cohive design system — AurevonLabs blue, Alinea-like fluid iOS surfaces. */
 
 :root {
   color-scheme: dark;
@@ -16,10 +16,10 @@ body {
 body {
   margin: 0;
   background:
-    radial-gradient(920px 520px at 82% -8%, rgba(78, 180, 255, 0.18), transparent 58%),
-    radial-gradient(1100px 640px at 8% 12%, rgba(27, 79, 216, 0.22), transparent 55%),
-    radial-gradient(700px 480px at 50% 100%, rgba(143, 208, 255, 0.08), transparent 50%),
-    #060b18;
+    radial-gradient(920px 520px at 82% -8%, rgba(78, 180, 255, 0.16), transparent 58%),
+    radial-gradient(1100px 640px at 8% 12%, rgba(27, 79, 216, 0.2), transparent 55%),
+    radial-gradient(700px 480px at 50% 100%, rgba(143, 208, 255, 0.07), transparent 50%),
+    #050914;
   font-family: 'Outfit', system-ui, -apple-system, sans-serif;
   overscroll-behavior: none;
 }
@@ -41,16 +41,16 @@ a:hover {
 /*
   Accent lineage from AurevonLabs mark: bright azure → deep royal.
   --honey kept as the primary accent token name (widely referenced).
-  --sky is the lighter inviting complementary blue.
+  Radii bias toward capsules — no boxy chrome.
 */
 
 .cv {
-  --bg: #060b18;
-  --bg2: #0c1528;
-  --panel: rgba(14, 28, 56, 0.55);
-  --panelS: #101c36;
-  --line: rgba(160, 190, 230, 0.12);
-  --lineB: rgba(160, 190, 230, 0.26);
+  --bg: #050914;
+  --bg2: #0a1426;
+  --panel: rgba(12, 24, 48, 0.42);
+  --panelS: #0e1a32;
+  --line: rgba(160, 190, 230, 0.09);
+  --lineB: rgba(160, 190, 230, 0.2);
   --ink: #edf2fa;
   --soft: #8b98b0;
   --honey: #4eb4ff;
@@ -61,11 +61,12 @@ a:hover {
   --violet: #a78bfa;
   --pink: #f472b6;
   --amber: #fbbf24;
-  --glow: 0 0 28px rgba(78, 180, 255, 0.28);
-  --shadow: 0 18px 48px rgba(2, 8, 24, 0.45);
-  --r-sm: 14px;
-  --r-md: 22px;
-  --r-lg: 28px;
+  --glow: 0 0 32px rgba(78, 180, 255, 0.32);
+  --shadow: 0 22px 56px rgba(2, 6, 18, 0.5);
+  --r-sm: 999px;
+  --r-md: 999px;
+  --r-lg: 32px;
+  --r-panel: 28px;
   --ease-out: cubic-bezier(0.22, 0.9, 0.28, 1);
   --ease-spring: cubic-bezier(0.2, 0.85, 0.25, 1.15);
 }
@@ -73,10 +74,10 @@ a:hover {
 .cv.light {
   --bg: #eef5fc;
   --bg2: #e0ebf7;
-  --panel: rgba(255, 255, 255, 0.72);
+  --panel: rgba(255, 255, 255, 0.68);
   --panelS: #f7fbff;
-  --line: rgba(30, 70, 130, 0.1);
-  --lineB: rgba(30, 70, 130, 0.22);
+  --line: rgba(30, 70, 130, 0.08);
+  --lineB: rgba(30, 70, 130, 0.18);
   --ink: #0c1a2e;
   /* Softened cool slate — ≥4.5:1 on #EEF5FC for WCAG AA body text. */
   --soft: #45566e;
@@ -84,8 +85,8 @@ a:hover {
   --sky: #3b9eff;
   --grad: linear-gradient(125deg, #4eb4ff 0%, #2f7fe8 48%, #1b4fd8 100%);
   --onGrad: #f4f9ff;
-  --glow: 0 0 22px rgba(59, 158, 255, 0.28);
-  --shadow: 0 16px 40px rgba(40, 90, 160, 0.12);
+  --glow: 0 0 24px rgba(59, 158, 255, 0.3);
+  --shadow: 0 18px 44px rgba(40, 90, 160, 0.12);
 }
 
 /* ── Form controls ────────────────────────────────────────────── */
@@ -96,16 +97,28 @@ a:hover {
   font-family: 'Outfit', system-ui, sans-serif;
   font-size: 14px;
   color: var(--ink);
-  background: var(--bg2);
+  background: rgba(10, 20, 40, 0.55);
   border: 1px solid var(--lineB);
-  border-radius: var(--r-sm);
-  padding: 12px 14px;
+  border-radius: 999px;
+  padding: 14px 18px;
   width: 100%;
   box-sizing: border-box;
   transition:
     border-color 0.25s var(--ease-out),
     box-shadow 0.25s var(--ease-out),
     background 0.25s var(--ease-out);
+}
+
+.cv textarea {
+  border-radius: 22px;
+  min-height: 96px;
+  resize: vertical;
+}
+
+.cv.light input,
+.cv.light textarea,
+.cv.light select {
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .cv input:focus,
@@ -135,7 +148,7 @@ a:hover {
   scrollbar-width: none;
 }
 
-/* ── Atmospheric mesh (lives behind content) ──────────────────── */
+/* ── Living atmosphere (Alinea-like ambient depth) ────────────── */
 
 .cv-atmosphere {
   position: absolute;
@@ -145,55 +158,114 @@ a:hover {
   overflow: hidden;
 }
 
+/* Soft top glow — premium app “breathing light” */
+.cv-atmosphere__glow {
+  position: absolute;
+  top: -18%;
+  left: 10%;
+  right: 10%;
+  height: 42%;
+  background: radial-gradient(ellipse at 50% 0%, rgba(110, 196, 255, 0.28), transparent 68%);
+  filter: blur(8px);
+  animation: cvbreathe 9s ease-in-out infinite;
+}
+
+.cv.light .cv-atmosphere__glow {
+  background: radial-gradient(ellipse at 50% 0%, rgba(143, 208, 255, 0.55), transparent 68%);
+}
+
 .cv-atmosphere::before,
 .cv-atmosphere::after {
   content: '';
   position: absolute;
   border-radius: 50%;
-  filter: blur(48px);
+  filter: blur(56px);
   will-change: transform, opacity;
 }
 
 .cv-atmosphere::before {
-  width: 72%;
-  height: 48%;
-  top: -12%;
-  right: -18%;
-  background: radial-gradient(circle, rgba(78, 180, 255, 0.32), transparent 68%);
-  animation: cvmesh 18s var(--ease-out) infinite alternate;
+  width: 78%;
+  height: 52%;
+  top: -14%;
+  right: -22%;
+  background: radial-gradient(circle, rgba(78, 180, 255, 0.36), transparent 68%);
+  animation: cvmesh 20s var(--ease-out) infinite alternate;
 }
 
 .cv-atmosphere::after {
-  width: 68%;
-  height: 52%;
-  bottom: -16%;
-  left: -20%;
-  background: radial-gradient(circle, rgba(27, 79, 216, 0.36), transparent 70%);
-  animation: cvmesh 22s var(--ease-out) -6s infinite alternate-reverse;
+  width: 72%;
+  height: 56%;
+  bottom: -20%;
+  left: -24%;
+  background: radial-gradient(circle, rgba(27, 79, 216, 0.4), transparent 70%);
+  animation: cvmesh 26s var(--ease-out) -8s infinite alternate-reverse;
 }
 
 .cv.light .cv-atmosphere::before {
-  background: radial-gradient(circle, rgba(143, 208, 255, 0.55), transparent 68%);
+  background: radial-gradient(circle, rgba(143, 208, 255, 0.58), transparent 68%);
 }
 
 .cv.light .cv-atmosphere::after {
-  background: radial-gradient(circle, rgba(59, 158, 255, 0.28), transparent 70%);
+  background: radial-gradient(circle, rgba(59, 158, 255, 0.3), transparent 70%);
 }
 
 .cv-atmosphere__orb {
   position: absolute;
-  width: 42%;
-  height: 34%;
-  top: 36%;
-  left: 28%;
+  width: 48%;
+  height: 38%;
+  top: 34%;
+  left: 24%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(143, 208, 255, 0.14), transparent 70%);
-  filter: blur(40px);
-  animation: cvorb 14s ease-in-out infinite;
+  background: radial-gradient(circle, rgba(143, 208, 255, 0.16), transparent 70%);
+  filter: blur(44px);
+  animation: cvorb 16s ease-in-out infinite;
 }
 
 .cv.light .cv-atmosphere__orb {
-  background: radial-gradient(circle, rgba(78, 180, 255, 0.22), transparent 70%);
+  background: radial-gradient(circle, rgba(78, 180, 255, 0.24), transparent 70%);
+}
+
+.cv-atmosphere__orb--2 {
+  width: 36%;
+  height: 28%;
+  top: 58%;
+  left: 52%;
+  background: radial-gradient(circle, rgba(59, 158, 255, 0.14), transparent 72%);
+  animation: cvorb 19s ease-in-out -5s infinite reverse;
+}
+
+.cv.light .cv-atmosphere__orb--2 {
+  background: radial-gradient(circle, rgba(27, 79, 216, 0.12), transparent 72%);
+}
+
+/* Slow color drift wash behind content */
+.cv-atmosphere__drift {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(40% 36% at 20% 30%, rgba(78, 180, 255, 0.1), transparent 60%),
+    radial-gradient(36% 32% at 78% 62%, rgba(27, 79, 216, 0.14), transparent 62%),
+    radial-gradient(28% 24% at 55% 18%, rgba(143, 208, 255, 0.08), transparent 65%);
+  animation: cvdrift 28s ease-in-out infinite alternate;
+  opacity: 0.9;
+}
+
+.cv.light .cv-atmosphere__drift {
+  background:
+    radial-gradient(40% 36% at 20% 30%, rgba(143, 208, 255, 0.28), transparent 60%),
+    radial-gradient(36% 32% at 78% 62%, rgba(59, 158, 255, 0.18), transparent 62%),
+    radial-gradient(28% 24% at 55% 18%, rgba(78, 180, 255, 0.16), transparent 65%);
+}
+
+/* Soft vignette for depth */
+.cv-atmosphere__vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 50% 40%, transparent 40%, rgba(2, 6, 16, 0.45) 100%);
+}
+
+.cv.light .cv-atmosphere__vignette {
+  background: radial-gradient(120% 90% at 50% 40%, transparent 45%, rgba(180, 205, 230, 0.35) 100%);
 }
 
 /* ── Motion ───────────────────────────────────────────────────── */
@@ -256,6 +328,17 @@ a:hover {
     box-shadow: 0 0 28px rgba(78, 180, 255, 0.36);
   }
 }
+@keyframes cvbreathe {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
 @keyframes cvslide {
   from {
     transform: translateY(100%);
@@ -283,18 +366,26 @@ a:hover {
     transform: translate3d(0, 0, 0) scale(1);
   }
   to {
-    transform: translate3d(-4%, 5%, 0) scale(1.08);
+    transform: translate3d(-5%, 6%, 0) scale(1.1);
   }
 }
 @keyframes cvorb {
   0%,
   100% {
     transform: translate3d(0, 0, 0) scale(1);
-    opacity: 0.7;
+    opacity: 0.65;
   }
   50% {
-    transform: translate3d(8%, -6%, 0) scale(1.12);
+    transform: translate3d(10%, -8%, 0) scale(1.14);
     opacity: 1;
+  }
+}
+@keyframes cvdrift {
+  from {
+    transform: translate3d(-2%, 1%, 0) rotate(0deg);
+  }
+  to {
+    transform: translate3d(3%, -2%, 0) rotate(4deg);
   }
 }
 @keyframes cvtab {
@@ -352,7 +443,10 @@ a:hover {
   }
   .cv-atmosphere::before,
   .cv-atmosphere::after,
-  .cv-atmosphere__orb {
+  .cv-atmosphere__orb,
+  .cv-atmosphere__orb--2,
+  .cv-atmosphere__drift,
+  .cv-atmosphere__glow {
     animation: none !important;
   }
 }
@@ -368,7 +462,7 @@ a:hover {
   background: var(--panelS);
   color: var(--ink);
   box-shadow: var(--shadow);
-  border-radius: var(--r-sm);
+  border-radius: 18px;
 }
 .leaflet-popup-content {
   font-family: 'Space Grotesk', system-ui, sans-serif;
@@ -410,10 +504,12 @@ a:hover {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink);
-  background: var(--panelS);
+  background: rgba(14, 26, 50, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--lineB);
   border-radius: 999px;
-  padding: 6px 11px;
+  padding: 7px 13px;
   box-shadow: var(--shadow);
 }
 .mapPreviewOverlay {
@@ -440,14 +536,16 @@ a:hover {
   flex-shrink: 0;
   position: relative;
   z-index: 2;
-  background: var(--bg);
+  background: linear-gradient(180deg, var(--bg) 70%, transparent);
 }
 .mapFullscreen__back {
-  background: var(--panelS);
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--lineB);
   color: var(--ink);
-  border-radius: 12px;
-  padding: 10px 14px;
+  border-radius: 999px;
+  padding: 10px 16px;
   font-weight: 600;
   font-size: 12px;
   letter-spacing: 0.06em;
@@ -522,7 +620,7 @@ a:hover {
   padding-bottom: 8px;
 }
 
-/* Filled azure call-to-action. */
+/* Filled azure capsule CTA — never boxy. */
 .ctaBtn {
   background: var(--grad);
   color: var(--onGrad);
@@ -533,7 +631,7 @@ a:hover {
   text-transform: uppercase;
   cursor: pointer;
   box-shadow: var(--glow);
-  border-radius: var(--r-sm);
+  border-radius: 999px;
   transition:
     transform 0.2s var(--ease-out),
     box-shadow 0.25s var(--ease-out),
@@ -543,13 +641,13 @@ a:hover {
   filter: brightness(1.06);
 }
 
-/* Outlined secondary action. */
+/* Soft ghost capsule. */
 .ghostBtn {
-  background: none;
+  background: rgba(78, 180, 255, 0.04);
   border: 1px solid var(--lineB);
   color: var(--ink);
-  border-radius: var(--r-sm);
-  padding: 9px 14px;
+  border-radius: 999px;
+  padding: 9px 16px;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-weight: 600;
   font-size: 10.5px;
@@ -564,15 +662,16 @@ a:hover {
 .ghostBtn:hover {
   border-color: var(--honey);
   color: var(--honey);
+  background: rgba(78, 180, 255, 0.08);
 }
 
-/* Soft glass surface — used where interaction needs a container. */
+/* Soft glass surface — interaction containers only. */
 .panelCard {
   background: var(--panel);
-  backdrop-filter: blur(18px) saturate(1.15);
-  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  backdrop-filter: blur(22px) saturate(1.2);
+  -webkit-backdrop-filter: blur(22px) saturate(1.2);
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
+  border-radius: var(--r-panel);
   box-shadow: var(--shadow);
 }
 
@@ -629,8 +728,8 @@ a:hover {
   justify-content: center;
   gap: 10px;
   width: 100%;
-  border-radius: var(--r-md);
-  padding: 15px 18px;
+  border-radius: 999px;
+  padding: 16px 20px;
   font-family: 'Space Grotesk', system-ui, sans-serif;
   font-weight: 600;
   font-size: 14.5px;
@@ -653,20 +752,20 @@ a:hover {
 .gw-btn--google {
   background: rgba(255, 255, 255, 0.96);
   color: #1a2333;
-  box-shadow: 0 10px 28px rgba(8, 24, 56, 0.18);
+  box-shadow: 0 12px 32px rgba(8, 24, 56, 0.2);
 }
 
 .cv.light .gw-btn--google {
   background: #ffffff;
   color: #0c1a2e;
-  border: 1px solid rgba(30, 70, 130, 0.14);
+  border: 1px solid rgba(30, 70, 130, 0.12);
   box-shadow: 0 8px 22px rgba(40, 90, 160, 0.1);
 }
 
 .gw-btn--apple {
-  background: #0a0f1c;
+  background: #070b16;
   color: #f4f7fb;
-  box-shadow: 0 12px 30px rgba(2, 8, 24, 0.35);
+  box-shadow: 0 14px 34px rgba(2, 8, 24, 0.4);
 }
 
 .cv.light .gw-btn--apple {
@@ -676,7 +775,7 @@ a:hover {
 
 .gw-btn--contact {
   color: var(--honey);
-  background: rgba(78, 180, 255, 0.06);
+  background: rgba(78, 180, 255, 0.07);
   box-shadow: inset 0 0 0 1px rgba(78, 180, 255, 0.28);
 }
 
@@ -686,10 +785,9 @@ a:hover {
 }
 
 .gw-btn--contact:hover {
-  background: rgba(78, 180, 255, 0.12);
+  background: rgba(78, 180, 255, 0.13);
 }
 
 .cv.light .gw-btn--contact:hover {
   background: rgba(22, 87, 184, 0.09);
 }
-
