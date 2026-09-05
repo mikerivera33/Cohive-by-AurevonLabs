@@ -48,7 +48,7 @@ export function AppHeader() {
         type="button"
         className="press grot"
         onClick={openPricing}
-        aria-label={`Current plan ${planTier}. Open plans`}
+        aria-label={`${planTier} subscription. View upgrades`}
         style={{
           ...press(0.96),
           marginLeft: 'auto',
