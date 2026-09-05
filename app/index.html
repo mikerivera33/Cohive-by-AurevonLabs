@@ -8,10 +8,12 @@
     />
     <!-- Locked to exactly the origins the app uses: self (incl. self-hosted
          fonts) and Carto basemap tiles. Inline style attributes are the
-         app's styling mechanism, hence 'unsafe-inline' on style-src only. -->
+         app's styling mechanism, hence 'unsafe-inline' on style-src only.
+         frame-ancestors is omitted here — browsers ignore it in <meta> and
+         warn; clickjacking is blocked via X-Frame-Options / CSP headers. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://*.basemaps.cartocdn.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://*.basemaps.cartocdn.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"
     />
     <meta name="referrer" content="no-referrer" />
     <meta name="theme-color" content="#0A0F1C" />
