@@ -282,6 +282,81 @@ await aok('addSpot clamps poisoned coordinates', async () => {
   assert.ok(Number.isFinite(res.data.spot.cost));
 });
 
+await aok('demo auth cannot take over a password-registered account', async () => {
+  resetRateLimits();
+  const email = 'locked-demo@cohive.test';
+  const reg = await req('POST', '/api/auth/register', {
+    email,
+    name: 'Locked',
+    password: 'password1',
+  });
+  assert.equal(reg.status, 201);
+  const victimId = reg.data.user.id;
+  const hijack = await req('POST', '/api/auth/demo', {
+    provider: 'email',
+    name: 'Attacker',
+    contact: email,
+  });
+  assert.equal(hijack.status, 401);
+  assert.equal(hijack.data.error, 'use_registered_login');
+  assert.equal(hijack.data.token, undefined);
+  const stillLogin = await req('POST', '/api/auth/login', {
+    email,
+    password: 'password1',
+  });
+  assert.equal(stillLogin.status, 200);
+  assert.equal(stillLogin.data.user.id, victimId);
+});
+
+await aok('demo auth cannot take over a verified OAuth account', async () => {
+  resetRateLimits();
+  const store2 = createStore(seed);
+  const api2 = createApi({ store: store2, scanImport });
+  async function req2(method, path, body) {
+    const res = await api2.handle(
+      new Request('http://test' + path, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      })
+    );
+    return { status: res.status, data: await res.json().catch(() => ({})) };
+  }
+  const upserted = store2.oauthUpsert({
+    provider: 'google',
+    email: 'oauth-victim@cohive.test',
+    name: 'OAuth Maya',
+    verified: true,
+  });
+  assert.ok(upserted.token);
+  const hijack = await req2('POST', '/api/auth/demo', {
+    provider: 'email',
+    name: 'Attacker',
+    contact: 'oauth-victim@cohive.test',
+  });
+  assert.equal(hijack.status, 401);
+  assert.equal(hijack.data.error, 'use_registered_login');
+  assert.equal(hijack.data.token, undefined);
+});
+
+await aok('demo auth still re-enters an existing demo email session', async () => {
+  resetRateLimits();
+  const first = await req('POST', '/api/auth/demo', {
+    provider: 'email',
+    name: 'Demo Maya',
+    contact: 'demo-reentry@cohive.test',
+  });
+  assert.equal(first.status, 201);
+  const again = await req('POST', '/api/auth/demo', {
+    provider: 'email',
+    name: 'Demo Maya',
+    contact: 'demo-reentry@cohive.test',
+  });
+  assert.equal(again.status, 201);
+  assert.ok(again.data.token);
+  assert.equal(again.data.user.id, first.data.user.id);
+});
+
 await aok('register does not auto-join seed trip (ACL)', async () => {
   resetRateLimits();
   const reg = await req('POST', '/api/auth/register', {

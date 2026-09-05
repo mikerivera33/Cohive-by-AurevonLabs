@@ -273,6 +273,15 @@ export function createStore(seed = null, options = {}) {
     }
     const existing = users.get(email);
     if (existing) {
+      // Password-registered and verified-OAuth accounts must not be
+      // session-minted from this unauthenticated demo path. Otherwise
+      // POST /api/auth/demo { provider: "email", contact: victim } is
+      // account takeover.
+      const passwordAccount = !existing.provider;
+      const verifiedOauth = existing.oauthVerified === true;
+      if (passwordAccount || verifiedOauth) {
+        return { error: 'use_registered_login', status: 401 };
+      }
       const token = createSession(existing.id);
       ensureDemoMembership(existing);
       schedulePersist();
