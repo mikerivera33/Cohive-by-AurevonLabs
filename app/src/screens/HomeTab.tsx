@@ -101,7 +101,7 @@ export function HomeTab() {
             display: 'flex',
             gap: 12,
             alignItems: 'baseline',
-            borderRadius: 16,
+            borderRadius: 999,
             padding: '8px 14px',
             fontSize: 11,
             color: 'var(--soft)',
@@ -131,7 +131,7 @@ export function HomeTab() {
             style={{
               ...press(0.98),
               textAlign: 'left',
-              borderRadius: 24,
+              borderRadius: 28,
               padding: '18px 18px',
               cursor: 'pointer',
               position: 'relative',
@@ -146,7 +146,7 @@ export function HomeTab() {
                 position: 'absolute',
                 inset: '0 auto 0 0',
                 width: 4,
-                borderRadius: '0 8px 8px 0',
+                borderRadius: '0 999px 999px 0',
                 background: hv.accent,
               }}
             />

@@ -22,7 +22,7 @@ function Shell() {
     document.documentElement.style.colorScheme = light ? 'light' : 'dark';
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', light ? '#EEF5FC' : '#060B18');
+      ?.setAttribute('content', light ? '#EEF5FC' : '#050914');
   }, [light]);
 
   // Switching tab or trip sub-view should start at the top, not mid-scroll.
@@ -47,7 +47,11 @@ function Shell() {
           }}
         >
         <div className="cv-atmosphere" aria-hidden>
+          <div className="cv-atmosphere__drift" />
+          <div className="cv-atmosphere__glow" />
           <div className="cv-atmosphere__orb" />
+          <div className="cv-atmosphere__orb cv-atmosphere__orb--2" />
+          <div className="cv-atmosphere__vignette" />
         </div>
 
         {!onboarded && <Onboarding />}

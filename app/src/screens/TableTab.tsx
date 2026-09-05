@@ -97,7 +97,7 @@ export function TableTab() {
               // ambient gradient (translucent --panel composites flakily).
               background: 'var(--panelS)',
               border: '1px solid var(--line)',
-              borderRadius: 22,
+              borderRadius: 28,
               padding: '14px 16px',
               marginBottom: 10,
               position: 'relative',
@@ -109,7 +109,7 @@ export function TableTab() {
                 position: 'absolute',
                 inset: '0 auto 0 0',
                 width: 4,
-                borderRadius: '0 8px 8px 0',
+                borderRadius: '0 999px 999px 0',
                 background: 'var(--pink)',
               }}
             />
@@ -151,8 +151,8 @@ export function TableTab() {
                   display: 'inline-flex',
                   alignItems: 'center',
                   gap: 5,
-                  borderRadius: 10,
-                  padding: '8px 13px',
+                  borderRadius: 999,
+                  padding: '8px 14px',
                   fontSize: 10.5,
                   letterSpacing: '.07em',
                 }}
@@ -168,7 +168,7 @@ export function TableTab() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="ghostBtn"
-                style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 10, padding: '7px 12px', letterSpacing: '.05em' }}
+                style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '7px 14px', letterSpacing: '.05em' }}
               >
                 Yelp
               </a>
@@ -177,7 +177,7 @@ export function TableTab() {
                 target="_blank"
                 rel="noopener noreferrer"
                 className="ghostBtn"
-                style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 10, padding: '7px 12px', letterSpacing: '.05em' }}
+                style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '7px 14px', letterSpacing: '.05em' }}
               >
                 Maps
               </a>

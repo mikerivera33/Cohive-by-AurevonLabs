@@ -69,7 +69,7 @@ function AccountRows({ accounts }: { accounts: Account[] }) {
                 cursor: 'pointer',
                 transition: 'all .18s ease',
                 border: on ? '1px solid var(--honey)' : '1px solid var(--line)',
-                background: on ? 'rgba(245,165,36,.12)' : 'none',
+                background: on ? 'rgba(78,180,255,.14)' : 'none',
                 color: on ? 'var(--honey)' : 'var(--soft)',
               }}
             >
@@ -146,7 +146,7 @@ export function YouTab() {
         <button
           className="press ctaBtn"
           onClick={openPricing}
-          style={{ ...press(0.96), borderRadius: 14, padding: '12px 18px', fontSize: 11.5, letterSpacing: '.09em' }}
+          style={{ ...press(0.96), borderRadius: 999, padding: '12px 20px', fontSize: 11.5, letterSpacing: '.09em' }}
         >
           See Cohive+ plans
         </button>
@@ -181,8 +181,8 @@ export function YouTab() {
               style={{
                 ...press(0.95),
                 marginLeft: 'auto',
-                borderRadius: 10,
-                padding: '8px 14px',
+                borderRadius: 999,
+                padding: '8px 16px',
                 fontSize: 10.5,
                 letterSpacing: '.07em',
                 boxShadow: 'none',
@@ -204,7 +204,7 @@ export function YouTab() {
             gap: 10,
             background: 'var(--panel)',
             border: '1px dashed var(--lineB)',
-            borderRadius: 14,
+            borderRadius: 24,
             padding: '13px 16px',
             marginTop: 14,
             fontSize: 12.5,

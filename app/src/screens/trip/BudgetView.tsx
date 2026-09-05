@@ -141,7 +141,7 @@ export function BudgetView() {
           background: 'var(--panelS)',
           border: '1px solid var(--lineB)',
           color: 'var(--honey)',
-          borderRadius: 12,
+          borderRadius: 999,
           padding: 12,
           fontWeight: 700,
           fontSize: 11.5,
@@ -189,7 +189,7 @@ export function BudgetView() {
           marginTop: 18,
           background: 'var(--panel)',
           border: '1px solid var(--lineB)',
-          borderRadius: 16,
+          borderRadius: 24,
           padding: '15px 16px',
         }}
       >

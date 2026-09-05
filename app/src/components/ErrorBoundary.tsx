@@ -64,7 +64,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
             background: 'linear-gradient(125deg,#6EC4FF,#1B4FD8)',
             color: '#041018',
             border: 'none',
-            borderRadius: 14,
+            borderRadius: 999,
             padding: '13px 26px',
             fontFamily: "'Space Grotesk', system-ui, sans-serif",
             fontWeight: 700,

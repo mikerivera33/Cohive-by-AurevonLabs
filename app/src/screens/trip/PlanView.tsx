@@ -112,7 +112,7 @@ export function PlanView() {
             ...press(0.98),
             width: '100%',
             marginTop: 12,
-            borderRadius: 13,
+            borderRadius: 999,
             padding: 14,
             fontSize: 12.5,
             opacity: building ? 0.7 : 1,
@@ -127,7 +127,7 @@ export function PlanView() {
           style={{
             background: 'var(--panelS)',
             border: '1px solid var(--lineB)',
-            borderRadius: 16,
+            borderRadius: 24,
             padding: 18,
             marginBottom: 14,
           }}
@@ -185,7 +185,7 @@ export function PlanView() {
               style={{
                 background: 'var(--panel)',
                 border: '1px solid var(--lineB)',
-                borderRadius: 16,
+                borderRadius: 24,
                 overflow: 'hidden',
                 marginBottom: 12,
                 boxShadow: 'var(--shadow)',
@@ -209,7 +209,7 @@ export function PlanView() {
                     fontSize: 11.5,
                     color: 'var(--honey)',
                     border: '1.5px solid var(--honey)',
-                    borderRadius: 8,
+                    borderRadius: 999,
                     padding: '6px 9px',
                     letterSpacing: '.08em',
                     background: 'rgba(245,165,36,.09)',
@@ -297,7 +297,7 @@ export function PlanView() {
                       padding: '9px 12px',
                       background: 'rgba(251,191,36,.08)',
                       border: '1px solid rgba(251,191,36,.35)',
-                      borderRadius: 10,
+                      borderRadius: 999,
                       fontSize: 11,
                       color: 'var(--amber)',
                     }}
@@ -330,7 +330,7 @@ export function PlanView() {
             <div
               style={{
                 border: '1px dashed var(--lineB)',
-                borderRadius: 13,
+                borderRadius: 999,
                 padding: '12px 15px',
                 fontSize: 12,
                 color: 'var(--soft)',
@@ -348,7 +348,7 @@ export function PlanView() {
           className="grot"
           style={{
             border: '1px dashed var(--lineB)',
-            borderRadius: 16,
+            borderRadius: 24,
             padding: '40px 20px',
             textAlign: 'center',
             color: 'var(--soft)',
