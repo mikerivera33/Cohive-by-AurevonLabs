@@ -30,6 +30,11 @@ function previewApiOffline(): Plugin {
 
 export default defineConfig({
   plugins: [react(), previewApiOffline()],
+  resolve: {
+    // Prevent multiple React copies in the production bundle (hooks dispatcher
+    // must be the same object createRoot mutates — otherwise useState is null).
+    dedupe: ['react', 'react-dom'],
+  },
   build: {
     // Capacitor copies this directory into the native projects.
     outDir: 'dist',
