@@ -1,6 +1,7 @@
 /**
  * Netlify Function — mounts the same Cohive API under /api/*.
- * In-memory store (ephemeral per isolate). For durable ACL, point at a DB later.
+ * Memory-only store per isolate (set COHIVE_DATA_FILE only with a writable
+ * volume; prefer a real DB/Blobs adapter for multi-instance durability).
  */
 import { createApi } from '../../server/api.mjs';
 

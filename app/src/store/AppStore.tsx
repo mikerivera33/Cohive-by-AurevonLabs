@@ -23,6 +23,7 @@ import {
   apiScan,
   getApiToken,
 } from '../lib/api';
+import { clampLat, clampLng } from '../lib/coords';
 import { fireConfetti } from '../lib/confetti';
 import { sanitizeImportText } from '../lib/sanitize';
 import { isBool, isShortString, isStringArray, load, save } from '../lib/storage';
