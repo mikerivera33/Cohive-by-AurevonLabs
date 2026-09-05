@@ -66,14 +66,14 @@ export function TripMapView() {
         className="panelCard"
         style={{
           border: '1px solid var(--lineB)',
-          borderRadius: 18,
+          borderRadius: 24,
           padding: 18,
           marginTop: 14,
           position: 'relative',
           overflow: 'hidden',
         }}
       >
-        <div style={{ position: 'absolute', inset: '0 0 auto 0', height: 2, background: 'var(--grad)' }} />
+        <div style={{ position: 'absolute', inset: '0 0 auto 0', height: 3, background: 'var(--grad)' }} />
         <h2 className="grot" style={{ fontWeight: 700, fontSize: 19, margin: '0 0 4px' }}>
           Drop a link.
           <br />
