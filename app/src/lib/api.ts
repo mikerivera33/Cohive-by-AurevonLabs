@@ -127,7 +127,17 @@ export function oauthStartPath(provider: 'google' | 'apple'): string {
 }
 
 export async function apiMe() {
-  return apiFetch<{ user: { id: string; name: string; email: string } }>('/api/auth/me');
+  return apiFetch<{
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      planTier?: string;
+      referralCode?: string | null;
+      stripeCustomerId?: string | null;
+      hasSubscription?: boolean;
+    };
+  }>('/api/auth/me');
 }
 
 export async function apiListTrips() {
@@ -169,3 +179,35 @@ export async function apiAddSpot(tripId: string, candidate: ScanCandidate, sourc
     body: JSON.stringify({ candidate, source }),
   });
 }
+
+export type BillingTier = 'Cohive+' | 'Cohive+ Annual' | 'Platinum';
+
+export async function apiBillingConfig() {
+  return apiFetch<{
+    configured: boolean;
+    publishableKey: string;
+    tiers: Record<string, { priceId: string | null; mode: string }>;
+  }>('/api/billing/config');
+}
+
+export async function apiBillingCheckout(tier: BillingTier) {
+  return apiFetch<{ url: string; sessionId: string }>('/api/billing/checkout', {
+    method: 'POST',
+    body: JSON.stringify({ tier }),
+  });
+}
+
+export async function apiBillingPortal() {
+  return apiFetch<{ url: string }>('/api/billing/portal', { method: 'POST', body: '{}' });
+}
+
+export async function apiBillingSync(sessionId: string) {
+  return apiFetch<{
+    ok: boolean;
+    user: { planTier: string; referralCode?: string | null; id: string; email: string; name: string };
+  }>('/api/billing/sync', {
+    method: 'POST',
+    body: JSON.stringify({ sessionId }),
+  });
+}
+

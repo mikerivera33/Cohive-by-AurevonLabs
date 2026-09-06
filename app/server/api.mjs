@@ -12,6 +12,13 @@ import { takeToken } from './rateLimit.mjs';
 import { MAX_JSON_BODY_BYTES, parseJsonBody } from './safeJson.mjs';
 import { scanImport as defaultScanImport } from './engine-bundle.mjs';
 import { authorizeUrl, exchangeCode, oauthConfig, providersPayload } from './oauth.mjs';
+import {
+  billingPublicConfig,
+  createCheckoutSession,
+  createPortalSession,
+  handleStripeWebhook,
+  syncCheckoutSession,
+} from './billing.mjs';
 
 const SCAN_LIMIT_USER = { limit: 30, windowMs: 60_000 };
 const SCAN_LIMIT_IP = { limit: 60, windowMs: 60_000 };
@@ -77,6 +84,20 @@ export function createApi(deps = {}) {
 
     const path = pathname.replace(/\/+$/, '') || '/';
     const query = new URLSearchParams(typeof search === 'string' ? search.replace(/^\?/, '') : '');
+    // Stripe webhooks need the raw body for signature verification — do not JSON-parse them.
+    if (method === 'POST' && path === '/api/billing/webhook') {
+      const sig =
+        headers.get?.('stripe-signature') ||
+        headers['stripe-signature'] ||
+        headers.get?.('Stripe-Signature') ||
+        null;
+      const result = await handleStripeWebhook(bodyText || '', sig, store);
+      if (result.error) {
+        return json(result.status || 400, { error: result.error, message: result.message });
+      }
+      return json(200, { received: true, type: result.type });
+    }
+
     let body = {};
     if (bodyText && method !== 'GET' && method !== 'HEAD') {
       const ct = String(headers.get?.('content-type') || headers['content-type'] || '');
@@ -175,6 +196,45 @@ export function createApi(deps = {}) {
     if (method === 'GET' && path === '/api/auth/me') {
       if (!user) return json(401, { error: 'unauthorized' });
       return json(200, { user: store.publicUser(user) });
+    }
+
+    // ── Billing (Stripe Checkout + Portal) ────────────────────
+    if (method === 'GET' && path === '/api/billing/config') {
+      return json(200, billingPublicConfig());
+    }
+    if (method === 'POST' && path === '/api/billing/checkout') {
+      if (!user) return json(401, { error: 'unauthorized' });
+      try {
+        const result = await createCheckoutSession(user, body.tier || body.planTier);
+        if (result.error) return json(result.status || 400, { error: result.error });
+        // Persist customer id early so portal works even before webhook.
+        if (result.customerId) {
+          store.applyEntitlement(user.id, { stripeCustomerId: result.customerId });
+        }
+        return json(200, { url: result.url, sessionId: result.sessionId });
+      } catch (e) {
+        return json(500, { error: 'checkout_failed', message: String(e?.message || e) });
+      }
+    }
+    if (method === 'POST' && path === '/api/billing/portal') {
+      if (!user) return json(401, { error: 'unauthorized' });
+      try {
+        const result = await createPortalSession(user);
+        if (result.error) return json(result.status || 400, { error: result.error });
+        return json(200, { url: result.url });
+      } catch (e) {
+        return json(500, { error: 'portal_failed', message: String(e?.message || e) });
+      }
+    }
+    if (method === 'POST' && path === '/api/billing/sync') {
+      if (!user) return json(401, { error: 'unauthorized' });
+      try {
+        const result = await syncCheckoutSession(body.sessionId || query.get('session_id'), user.id, store);
+        if (result.error) return json(result.status || 400, { error: result.error });
+        return json(200, result);
+      } catch (e) {
+        return json(500, { error: 'sync_failed', message: String(e?.message || e) });
+      }
     }
 
     // ── Health ────────────────────────────────────────────────

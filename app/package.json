@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Cohive by AurevonLabs \u2014 trips, homes and dinners in one shared hive.",
+  "description": "Cohive by AurevonLabs — trips, homes and dinners in one shared hive.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -31,7 +31,8 @@
     "@capacitor/status-bar": "^8.0.0",
     "leaflet": "^1.9.4",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "stripe": "^22.6.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",

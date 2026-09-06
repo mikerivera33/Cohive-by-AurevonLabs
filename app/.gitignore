@@ -11,3 +11,4 @@ data/
 ios/App/Pods/
 ios/App/App/public/
 android/app/src/main/assets/public/
+.stripe-sandbox-claim.url

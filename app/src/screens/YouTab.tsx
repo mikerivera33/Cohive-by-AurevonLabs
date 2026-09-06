@@ -1,3 +1,4 @@
+import { apiBillingPortal, ApiError } from '../lib/api';
 import { copyText } from '../lib/clipboard';
 import { press } from '../lib/styles';
 import { useApp } from '../store/AppStore';
@@ -153,6 +154,34 @@ export function YouTab() {
         >
           See Cohive+ plans
         </button>
+          {planTier !== 'Free' && (
+            <button
+              type="button"
+              className="press"
+              onClick={async () => {
+                try {
+                  const { url } = await apiBillingPortal();
+                  if (url) window.location.assign(url);
+                  else say('Billing portal unavailable');
+                } catch (e) {
+                  say(e instanceof ApiError ? 'Open billing from a paid session' : 'Billing portal unavailable');
+                }
+              }}
+              style={{
+                marginTop: 8,
+                width: '100%',
+                borderRadius: 999,
+                minHeight: 44,
+                border: '1px solid var(--lineB)',
+                background: 'transparent',
+                color: 'var(--honey)',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Manage billing
+            </button>
+          )}
       </div>
 
       {!isFree ? (

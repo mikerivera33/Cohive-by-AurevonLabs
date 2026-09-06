@@ -66,7 +66,7 @@ const TIERS: TierDef[] = [
 ];
 
 export function PricingSheet() {
-  const { pricingOpen, closePricing, purchase } = useApp();
+  const { pricingOpen, closePricing, purchase, planTier } = useApp();
   const sheetRef = useRef<HTMLDivElement>(null);
 
   // Escape closes; Tab cycles inside the sheet; focus returns to the opener.
@@ -237,9 +237,22 @@ export function PricingSheet() {
             </button>
           </div>
         ))}
-        <p style={{ fontSize: 10, color: 'var(--soft)', textAlign: 'center', margin: '8px 0 0' }}>
-          Demo — nothing here charges anything.
+        <p style={{ fontSize: 10, color: 'var(--soft)', textAlign: 'center', margin: '8px 0 0', lineHeight: 1.45 }}>
+          Secure checkout via Stripe. By purchasing you agree to our{' '}
+          <a href="/legal/terms.html" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--honey)' }}>
+            Terms
+          </a>{' '}
+          and{' '}
+          <a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--honey)' }}>
+            Privacy Policy
+          </a>
+          . Subscriptions renew until canceled. © AurevonLabs.
         </p>
+        {planTier !== 'Free' && (
+          <p style={{ fontSize: 10, color: 'var(--soft)', textAlign: 'center', margin: '10px 0 0' }}>
+            Current plan: <b style={{ color: 'var(--text)' }}>{planTier}</b>
+          </p>
+        )}
       </div>
     </div>
   );

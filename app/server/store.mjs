@@ -111,6 +111,12 @@ export function createStore(seed = null, options = {}) {
         hash: u.hash,
         provider: u.provider || null,
         createdAt: u.createdAt,
+        planTier: u.planTier || 'Free',
+        referralCode: u.referralCode || null,
+        stripeCustomerId: u.stripeCustomerId || null,
+        stripeSubscriptionId: u.stripeSubscriptionId || null,
+        stripePriceId: u.stripePriceId || null,
+        planUpdatedAt: u.planUpdatedAt || null,
       });
     }
     return {
@@ -145,6 +151,12 @@ export function createStore(seed = null, options = {}) {
 
     for (const u of snap.users || []) {
       if (!u?.id || !u?.email) continue;
+      u.planTier = u.planTier || 'Free';
+      u.referralCode = u.referralCode || null;
+      u.stripeCustomerId = u.stripeCustomerId || null;
+      u.stripeSubscriptionId = u.stripeSubscriptionId || null;
+      u.stripePriceId = u.stripePriceId || null;
+      u.planUpdatedAt = u.planUpdatedAt || null;
       users.set(u.email, u);
       users.set(u.id, u);
     }
@@ -190,7 +202,74 @@ export function createStore(seed = null, options = {}) {
   }
 
   function publicUser(u) {
-    return { id: u.id, email: u.email, name: u.name, createdAt: u.createdAt };
+    return {
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      createdAt: u.createdAt,
+      planTier: u.planTier || 'Free',
+      referralCode: u.referralCode || null,
+      stripeCustomerId: u.stripeCustomerId || null,
+      hasSubscription: Boolean(u.stripeSubscriptionId),
+    };
+  }
+
+  function getUserById(userId) {
+    return users.get(userId) || null;
+  }
+
+  function findUserIdByStripeCustomer(customerId) {
+    if (!customerId) return null;
+    for (const u of users.values()) {
+      if (u?.stripeCustomerId === customerId && u.id) return u.id;
+    }
+    return null;
+  }
+
+  function mintReferralCode(user) {
+    if (user.referralCode) return user.referralCode;
+    const prefix = String(user.name || 'HV')
+      .replace(/[^a-zA-Z]/g, '')
+      .slice(0, 4)
+      .toUpperCase() || 'HV';
+    user.referralCode = `${prefix}-${randomBytes(2).toString('hex').toUpperCase()}10`;
+    return user.referralCode;
+  }
+
+  /**
+   * Server-side entitlement write — only callable from billing webhooks / sync.
+   * @param {string} userId
+   * @param {{ planTier: string, stripeCustomerId?: string | null, stripeSubscriptionId?: string | null, stripePriceId?: string | null }} patch
+   */
+  function applyEntitlement(userId, patch) {
+    const user = users.get(userId);
+    if (!user) return { error: 'user_not_found' };
+    if (patch.planTier !== undefined) {
+      const tier = patch.planTier;
+      if (tier !== 'Free' && tier !== 'Cohive+' && tier !== 'Cohive+ Annual' && tier !== 'Platinum') {
+        return { error: 'invalid_tier' };
+      }
+      user.planTier = tier;
+      user.planUpdatedAt = new Date().toISOString();
+      if (tier !== 'Free') mintReferralCode(user);
+    }
+    if (patch.stripeCustomerId !== undefined && patch.stripeCustomerId) {
+      user.stripeCustomerId = patch.stripeCustomerId;
+    }
+    if (patch.stripeSubscriptionId !== undefined) {
+      user.stripeSubscriptionId = patch.stripeSubscriptionId;
+    }
+    if (patch.stripePriceId !== undefined) {
+      user.stripePriceId = patch.stripePriceId;
+    }
+    schedulePersist();
+    return { user: publicUser(user) };
+  }
+
+  function isPaidUser(userId) {
+    const u = users.get(userId);
+    const t = u?.planTier || 'Free';
+    return t === 'Cohive+' || t === 'Cohive+ Annual' || t === 'Platinum';
   }
 
   function createSession(userId) {
@@ -231,6 +310,12 @@ export function createStore(seed = null, options = {}) {
       salt,
       hash,
       createdAt: new Date().toISOString(),
+      planTier: 'Free',
+      referralCode: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      planUpdatedAt: null,
     };
     users.set(norm, user);
     users.set(user.id, user);
@@ -288,6 +373,12 @@ export function createStore(seed = null, options = {}) {
       provider: p,
       contact: rawContact || undefined,
       createdAt: new Date().toISOString(),
+      planTier: 'Free',
+      referralCode: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      planUpdatedAt: null,
     };
     users.set(email, user);
     users.set(user.id, user);
@@ -318,6 +409,12 @@ export function createStore(seed = null, options = {}) {
         provider: p,
         oauthVerified: Boolean(verified),
         createdAt: new Date().toISOString(),
+      planTier: 'Free',
+      referralCode: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      stripePriceId: null,
+      planUpdatedAt: null,
       };
       users.set(mail, user);
       users.set(user.id, user);
@@ -520,7 +617,7 @@ export function createStore(seed = null, options = {}) {
   }
 
   function createTrip(userId, body) {
-    if (tripCountForUser(userId) >= FREE_TRIP_LIMIT) {
+    if (!isPaidUser(userId) && tripCountForUser(userId) >= FREE_TRIP_LIMIT) {
       return { error: 'trip_limit', status: 402 };
     }
     const tripId = id();
@@ -565,6 +662,10 @@ export function createStore(seed = null, options = {}) {
     logout,
     getSessionUser,
     publicUser,
+    getUserById,
+    findUserIdByStripeCustomer,
+    applyEntitlement,
+    isPaidUser,
     listTripsForUser,
     getTrip,
     castVote,

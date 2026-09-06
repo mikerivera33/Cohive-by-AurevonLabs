@@ -323,4 +323,42 @@ await aok('file-backed store survives reload', async () => {
   }
 });
 
+
+console.log('\nbilling');
+await aok('billing config reports tiers', async () => {
+  const res = await req('GET', '/api/billing/config');
+  assert.equal(res.status, 200);
+  assert.ok(res.data.tiers);
+  assert.ok(res.data.tiers['Cohive+']);
+});
+await aok('checkout requires auth', async () => {
+  const res = await req('POST', '/api/billing/checkout', { tier: 'Cohive+' });
+  assert.equal(res.status, 401);
+});
+await aok('paid entitlement lifts trip limit', async () => {
+  resetRateLimits();
+  const reg = await req('POST', '/api/auth/register', {
+    email: 'bill@cohive.test',
+    name: 'Bill',
+    password: 'password1',
+  });
+  assert.equal(reg.status, 201);
+  const tok = reg.data.token;
+  for (let i = 0; i < 3; i++) {
+    const r = await req('POST', '/api/trips', { name: 'T' + i, city: 'X' }, tok);
+    assert.equal(r.status, 201);
+  }
+  const blocked = await req('POST', '/api/trips', { name: 'blocked', city: 'X' }, tok);
+  assert.equal(blocked.status, 402);
+  store.applyEntitlement(reg.data.user.id, {
+    planTier: 'Cohive+',
+    stripeCustomerId: 'cus_test',
+  });
+  const allowed = await req('POST', '/api/trips', { name: 'paid', city: 'X' }, tok);
+  assert.equal(allowed.status, 201);
+  const me = await req('GET', '/api/auth/me', undefined, tok);
+  assert.equal(me.data.user.planTier, 'Cohive+');
+  assert.ok(me.data.user.referralCode);
+});
+
 console.log(`\nverify:api — ${passed} checks passed`);

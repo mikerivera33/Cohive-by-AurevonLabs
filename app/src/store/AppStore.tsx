@@ -15,11 +15,14 @@ import {
   ApiError,
   apiAddMember,
   apiAddSpot,
+  apiBillingCheckout,
+  apiBillingSync,
   apiCastVote,
   apiDemoAuth,
   apiGetTrip,
   apiHealthy,
   apiListTrips,
+  apiMe,
   apiScan,
   getApiToken,
   setApiToken,
@@ -236,6 +239,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [refCode, setRefCode] = useState<string>(() => load('refCode', '', isShortString));
   const [linked, setLinked] = useState<string[]>(() => load<string[]>('linked', [], isStringArray));
   useEffect(() => save('planTier', planTier), [planTier]);
+
+
   useEffect(() => save('refCode', refCode), [refCode]);
   useEffect(() => save('linked', linked), [linked]);
 
@@ -277,6 +282,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(''), 2200);
   }, []);
+
+  // Sync plan from API session when available.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!getApiToken()) return;
+        const me = await apiMe();
+        if (cancelled || !me?.user) return;
+        if (me.user.planTier) setPlanTier(me.user.planTier as PlanTier);
+        if (me.user.referralCode) setRefCode(me.user.referralCode);
+      } catch {
+        /* offline / demo */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Return from Stripe Checkout — sync entitlement then clean the URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const billing = params.get('billing');
+    const sessionId = params.get('session_id');
+    if (billing === 'cancel') {
+      say('Checkout canceled — no charge');
+      params.delete('billing');
+      const next = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (next ? '?' + next : ''));
+      return;
+    }
+    if (billing !== 'success' || !sessionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result = await apiBillingSync(sessionId);
+        if (cancelled) return;
+        if (result.user?.planTier) {
+          setPlanTier(result.user.planTier as PlanTier);
+          if (result.user.referralCode) setRefCode(result.user.referralCode);
+          say(result.user.planTier + ' is active — thank you');
+        }
+      } catch {
+        if (!cancelled) say('Payment received — refresh if your plan doesn’t update');
+      } finally {
+        params.delete('billing');
+        params.delete('session_id');
+        const next = params.toString();
+        window.history.replaceState({}, '', window.location.pathname + (next ? '?' + next : ''));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [say]);
+
 
   const hydrateFromApi = useCallback(async (tripId: string) => {
     const data = await apiGetTrip(tripId);
@@ -591,19 +653,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [building, planDays, pace, say]);
 
   const purchase = useCallback(
-    (tier: PlanTier) => {
+    async (tier: PlanTier) => {
       setPricingOpen(false);
       if (tier === 'Free') {
         setPlanTier('Free');
         say('You’re on Free');
         return;
       }
+      // Prefer real Stripe Checkout when the API is configured.
+      try {
+        if (!getApiToken()) {
+          await apiDemoAuth('email', { name: 'You', contact: 'you@cohive.local' });
+        }
+        const { url } = await apiBillingCheckout(tier);
+        if (url) {
+          say('Taking you to secure checkout…');
+          window.location.assign(url);
+          return;
+        }
+      } catch (e) {
+        // Fall through to local demo entitlement when billing isn’t configured.
+        console.warn('[billing]', e);
+      }
       setPlanTier(tier);
-      // Permanent, non-expirable — generated once and never regenerated.
       setRefCode(
         (prev) => prev || 'MIKE-' + Math.random().toString(36).slice(2, 6).toUpperCase() + '10'
       );
-      say(tier + ' active — your referral code is live (demo, nothing charged)');
+      say(tier + ' active in demo mode — connect Stripe to charge for real');
     },
     [say]
   );

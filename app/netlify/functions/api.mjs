@@ -1,3 +1,5 @@
+import { loadEnv } from '../../server/loadEnv.mjs';
+loadEnv();
 /**
  * Netlify Function — mounts the same Cohive API under /api/*.
  * Memory-only store per isolate (set COHIVE_DATA_FILE only with a writable
