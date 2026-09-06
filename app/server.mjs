@@ -1,3 +1,5 @@
+import { loadEnv } from './server/loadEnv.mjs';
+loadEnv();
 /**
  * Zero-dependency static server + Cohive API for the production build.
  * Serves dist/ with security headers and mounts /api/* with auth + ACL.
