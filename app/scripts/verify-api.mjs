@@ -295,6 +295,62 @@ await aok('register does not auto-join seed trip (ACL)', async () => {
   assert.equal(trips.data.trips.length, 0);
 });
 
+await aok('verified OAuth users do not share the seed trip', async () => {
+  const alice = store.oauthUpsert({
+    provider: 'google',
+    email: 'alice-oauth@cohive.test',
+    name: 'Alice',
+    verified: true,
+  });
+  const bob = store.oauthUpsert({
+    provider: 'google',
+    email: 'bob-oauth@cohive.test',
+    name: 'Bob',
+    verified: true,
+  });
+  assert.equal(alice.mode, 'oauth');
+  assert.equal(bob.mode, 'oauth');
+  assert.equal(store.listTripsForUser(alice.user.id).length, 0);
+  assert.equal(store.listTripsForUser(bob.user.id).length, 0);
+  const aliceSeed = store.getTrip('1', alice.user.id);
+  const bobSeed = store.getTrip('1', bob.user.id);
+  assert.equal(aliceSeed.status, 403);
+  assert.equal(bobSeed.status, 403);
+  const aliceTrip = store.createTrip(alice.user.id, { name: 'Kyoto', city: 'Kyoto' });
+  assert.ok(aliceTrip.trip?.id);
+  assert.equal(store.getTrip(aliceTrip.trip.id, bob.user.id).status, 403);
+});
+
+await aok('provisional OAuth still joins the demo seed trip', async () => {
+  const prov = store.oauthUpsert({
+    provider: 'google',
+    email: '',
+    name: 'You',
+    verified: false,
+  });
+  assert.equal(prov.mode, 'oauth_provisional');
+  const trips = store.listTripsForUser(prov.user.id);
+  assert.ok(trips.some((t) => String(t.id) === '1'));
+});
+
+await aok('verified OAuth on a registered email does not join seed', async () => {
+  const reg = store.register({
+    email: 'later-oauth@cohive.test',
+    name: 'Later',
+    password: 'password1',
+  });
+  assert.ok(reg.token);
+  assert.equal(store.listTripsForUser(reg.user.id).length, 0);
+  store.oauthUpsert({
+    provider: 'google',
+    email: 'later-oauth@cohive.test',
+    name: 'Later',
+    verified: true,
+  });
+  assert.equal(store.listTripsForUser(reg.user.id).length, 0);
+  assert.equal(store.getTrip('1', reg.user.id).status, 403);
+});
+
 await aok('file-backed store survives reload', async () => {
   const { mkdtemp, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');

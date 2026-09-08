@@ -327,7 +327,11 @@ export function createStore(seed = null, options = {}) {
       user.oauthVerified = Boolean(verified);
     }
     const token = createSession(user.id);
-    ensureDemoMembership(user);
+    // Provisional (failed/demo OAuth) may share the seed trip. Verified
+    // Google/Apple logins must not — same ACL boundary as register/login —
+    // or every signed-in user lands on the same trip and can read/write
+    // everyone else's spots, votes, and scans.
+    if (!verified) ensureDemoMembership(user);
     schedulePersist();
     return {
       user: publicUser(user),
