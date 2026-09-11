@@ -5,17 +5,29 @@
  * Returns a (req, res) handler compatible with node:http, and a fetch-style
  * `handle(Request)` for Netlify Functions.
  */
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+
 import { createStore } from './store.mjs';
 import { seed } from './seed.mjs';
 import { sanitizeImportText } from './sanitize.mjs';
 import { takeToken } from './rateLimit.mjs';
 import { MAX_JSON_BODY_BYTES, parseJsonBody } from './safeJson.mjs';
 import { scanImport as defaultScanImport } from './engine-bundle.mjs';
-import { authorizeUrl, exchangeCode, oauthConfig, providersPayload } from './oauth.mjs';
+import {
+  authorizeUrl,
+  exchangeCode as defaultExchangeCode,
+  oauthConfig,
+  providersPayload,
+} from './oauth.mjs';
 
 const SCAN_LIMIT_USER = { limit: 30, windowMs: 60_000 };
 const SCAN_LIMIT_IP = { limit: 60, windowMs: 60_000 };
 const AUTH_LIMIT_IP = { limit: 20, windowMs: 60_000 };
+
+const OAUTH_STATE_COOKIE = 'cohive_oauth_state';
+const OAUTH_HANDOFF_COOKIE = 'cohive_oauth_handoff';
+const OAUTH_STATE_MAX_AGE = 600;
+const OAUTH_HANDOFF_MAX_AGE = 120;
 
 const CORS_ORIGIN = process.env.COHIVE_CORS_ORIGIN || '*';
 
@@ -51,6 +63,54 @@ function redirect(location, extraHeaders = {}) {
   };
 }
 
+function withCookies(result, cookies) {
+  if (!cookies?.length) return result;
+  return {
+    ...result,
+    headers: {
+      ...result.headers,
+      'Set-Cookie': cookies.length === 1 ? cookies[0] : cookies,
+    },
+  };
+}
+
+function cookieValue(reqHeaders, name) {
+  const raw = reqHeaders.get?.('cookie') || reqHeaders.cookie || '';
+  for (const part of String(raw).split(';')) {
+    const trimmed = part.trim();
+    const eq = trimmed.indexOf('=');
+    if (eq < 1) continue;
+    if (trimmed.slice(0, eq) === name) {
+      try {
+        return decodeURIComponent(trimmed.slice(eq + 1));
+      } catch {
+        return trimmed.slice(eq + 1);
+      }
+    }
+  }
+  return '';
+}
+
+function serializeCookie(name, value, { maxAge, secure }) {
+  const bits = [
+    `${name}=${encodeURIComponent(value)}`,
+    'Path=/',
+    'SameSite=Lax',
+    'HttpOnly',
+    `Max-Age=${maxAge}`,
+  ];
+  if (secure) bits.push('Secure');
+  return bits.join('; ');
+}
+
+function equalSecret(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) return false;
+  const left = Buffer.from(a);
+  const right = Buffer.from(b);
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}
+
 function bearer(reqHeaders) {
   const h = reqHeaders.get?.('authorization') || reqHeaders.authorization || '';
   const m = String(h).match(/^Bearer\s+(.+)$/i);
@@ -69,6 +129,7 @@ function clientIp(reqHeaders, fallback = '0.0.0.0') {
 export function createApi(deps = {}) {
   const store = deps.store || createStore(seed);
   const scanImportFn = deps.scanImport || defaultScanImport;
+  const exchange = deps.exchangeCode || defaultExchangeCode;
 
   async function dispatch(method, pathname, headers, bodyText, ip, search = '') {
     if (method === 'OPTIONS') {
@@ -135,16 +196,30 @@ export function createApi(deps = {}) {
     if (method === 'GET' && path === '/api/auth/oauth/google') {
       const limited = rateLimitAuth();
       if (limited) return limited;
-      const url = authorizeUrl('google', 'cohive');
+      const state = randomBytes(16).toString('hex');
+      const url = authorizeUrl('google', state);
       if (!url) return json(501, { error: 'oauth_not_configured', provider: 'google', demo: true });
-      return redirect(url);
+      const cfg = oauthConfig();
+      return withCookies(redirect(url), [
+        serializeCookie(OAUTH_STATE_COOKIE, state, {
+          maxAge: OAUTH_STATE_MAX_AGE,
+          secure: cfg.publicBase.startsWith('https://'),
+        }),
+      ]);
     }
     if (method === 'GET' && path === '/api/auth/oauth/apple') {
       const limited = rateLimitAuth();
       if (limited) return limited;
-      const url = authorizeUrl('apple', 'cohive');
+      const state = randomBytes(16).toString('hex');
+      const url = authorizeUrl('apple', state);
       if (!url) return json(501, { error: 'oauth_not_configured', provider: 'apple', demo: true });
-      return redirect(url);
+      const cfg = oauthConfig();
+      return withCookies(redirect(url), [
+        serializeCookie(OAUTH_STATE_COOKIE, state, {
+          maxAge: OAUTH_STATE_MAX_AGE,
+          secure: cfg.publicBase.startsWith('https://'),
+        }),
+      ]);
     }
     if (
       (method === 'GET' || method === 'POST') &&
@@ -154,19 +229,52 @@ export function createApi(deps = {}) {
       if (limited) return limited;
       const provider = path.includes('/apple/') ? 'apple' : 'google';
       const cfg = oauthConfig();
+      const secure = cfg.publicBase.startsWith('https://');
+      const clearState = serializeCookie(OAUTH_STATE_COOKIE, '', { maxAge: 0, secure });
+      const fail = (reason) =>
+        withCookies(redirect(`${cfg.publicBase}/?start=onboarding&auth_error=${reason}`), [clearState]);
+
+      const expectedState = cookieValue(headers, OAUTH_STATE_COOKIE);
+      const presentedState = String(body.state || query.get('state') || '').trim();
+      if (!equalSecret(expectedState, presentedState)) {
+        return fail('oauth_denied');
+      }
+
       const code = String(body.code || query.get('code') || '').trim();
-      const appHome = `${cfg.publicBase}/?start=onboarding&authed=1`;
-      const profile = await exchangeCode(provider, code);
-      const result = profile
-        ? store.oauthUpsert(profile)
-        : store.oauthUpsert({
-            provider,
-            email: '',
-            name: 'You',
-            verified: false,
-          });
-      const dest = `${appHome}&token=${encodeURIComponent(result.token)}&mode=${encodeURIComponent(result.mode)}`;
-      return redirect(dest);
+      if (!code) return fail('oauth_failed');
+
+      const profile = await exchange(provider, code);
+      if (!profile?.email || !profile.verified) return fail('oauth_failed');
+
+      const result = store.oauthUpsert(profile);
+      const dest = `${cfg.publicBase}/?start=onboarding&authed=1&mode=${encodeURIComponent(result.mode)}`;
+      return withCookies(redirect(dest), [
+        clearState,
+        serializeCookie(OAUTH_HANDOFF_COOKIE, result.token, {
+          maxAge: OAUTH_HANDOFF_MAX_AGE,
+          secure,
+        }),
+      ]);
+    }
+    if (method === 'POST' && path === '/api/auth/oauth/complete') {
+      const limited = rateLimitAuth();
+      if (limited) return limited;
+      const cfg = oauthConfig();
+      const secure = cfg.publicBase.startsWith('https://');
+      const clearHandoff = serializeCookie(OAUTH_HANDOFF_COOKIE, '', { maxAge: 0, secure });
+      const handoff = cookieValue(headers, OAUTH_HANDOFF_COOKIE);
+      const user = store.getSessionUser(handoff);
+      if (!user) {
+        return withCookies(json(401, { error: 'unauthorized' }), [clearHandoff]);
+      }
+      return withCookies(
+        json(200, {
+          user: store.publicUser(user),
+          token: handoff,
+          mode: user.oauthVerified ? 'oauth' : 'oauth_provisional',
+        }),
+        [clearHandoff]
+      );
     }
     if (method === 'POST' && path === '/api/auth/logout') {
       store.logout(token);
@@ -299,7 +407,15 @@ export function createApi(deps = {}) {
       ip,
       url.search
     );
-    return new Response(result.body, { status: result.status, headers: result.headers });
+    const out = new Headers();
+    for (const [key, value] of Object.entries(result.headers || {})) {
+      if (key.toLowerCase() === 'set-cookie' && Array.isArray(value)) {
+        for (const cookie of value) out.append('Set-Cookie', cookie);
+      } else if (value != null && value !== '') {
+        out.set(key, String(value));
+      }
+    }
+    return new Response(result.body, { status: result.status, headers: out });
   }
 
   /** node:http entry. */
