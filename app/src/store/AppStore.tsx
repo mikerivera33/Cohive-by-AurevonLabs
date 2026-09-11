@@ -16,17 +16,17 @@ import {
   apiAddMember,
   apiAddSpot,
   apiCastVote,
+  apiCompleteOAuthHandoff,
   apiDemoAuth,
   apiGetTrip,
   apiHealthy,
   apiListTrips,
   apiScan,
   getApiToken,
-  setApiToken,
 } from '../lib/api';
 import { fireConfetti } from '../lib/confetti';
 import { sanitizeImportText } from '../lib/sanitize';
-import { isBool, isSessionToken, isShortString, isStringArray, load, save } from '../lib/storage';
+import { isBool, isShortString, isStringArray, load, save } from '../lib/storage';
 import type {
   ActivityItem,
   Expense,
@@ -92,8 +92,8 @@ interface AppStore {
     provider: 'apple' | 'google' | 'email' | 'phone',
     opts?: { name?: string; contact?: string }
   ) => Promise<void>;
-  /** Accept an OAuth redirect token from the URL (if present) and hydrate. */
-  acceptAuthToken: (token: string) => Promise<void>;
+  /** Finish an OAuth redirect via the HttpOnly handoff cookie (never a URL token). */
+  acceptOAuthHandoff: () => Promise<boolean>;
   /** True when votes/members/scan go through server-enforced ACL. */
   apiLive: boolean;
 
@@ -343,22 +343,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [hydrateFromApi, say]
   );
 
-  const acceptAuthToken = useCallback(
-    async (token: string) => {
-      if (!isSessionToken(token)) return;
-      setApiToken(token);
-      try {
-        const healthy = await apiHealthy();
-        if (!healthy) return;
-        const { trips } = await apiListTrips();
-        if (trips[0]) await hydrateFromApi(trips[0].id);
-      } catch (e) {
-        const code = e instanceof ApiError ? e.code : 'auth_failed';
-        say('Session restore failed (' + code + ')');
-      }
-    },
-    [hydrateFromApi, say]
-  );
+  const acceptOAuthHandoff = useCallback(async () => {
+    try {
+      const healthy = await apiHealthy();
+      if (!healthy) return false;
+      await apiCompleteOAuthHandoff();
+      const { trips } = await apiListTrips();
+      if (trips[0]) await hydrateFromApi(trips[0].id);
+      return true;
+    } catch (e) {
+      const code = e instanceof ApiError ? e.code : 'auth_failed';
+      say('Sign-in did not complete (' + code + ')');
+      return false;
+    }
+  }, [hydrateFromApi, say]);
 
   const setTier = useCallback(
     (id: number, tier: Tier) => {
@@ -639,7 +637,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       finishOnboarding,
       replayOnboarding,
       authenticate,
-      acceptAuthToken,
+      acceptOAuthHandoff,
       apiLive,
       tab,
       setTab,
@@ -695,7 +693,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       confetti: fireConfetti,
     }),
     [
-      light, onboarded, finishOnboarding, replayOnboarding, authenticate, acceptAuthToken, apiLive, tab, tripView,
+      light, onboarded, finishOnboarding, replayOnboarding, authenticate, acceptOAuthHandoff, apiLive, tab, tripView,
       tripMeta, spots, expenses, members, activity, nest, table, addedIds,
       setTier, addSpotFromScan, addExpense, addMember, toggleReaction,
       scanText, scanning, scanResult, scan,

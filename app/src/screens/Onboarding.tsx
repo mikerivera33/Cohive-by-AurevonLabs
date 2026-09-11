@@ -130,7 +130,7 @@ function AppleMark() {
 }
 
 export function Onboarding() {
-  const { finishOnboarding, authenticate, acceptAuthToken } = useApp();
+  const { finishOnboarding, authenticate, acceptOAuthHandoff } = useApp();
   const [step, setStep] = useState<Step>('gateway');
   const [slide, setSlide] = useState(0);
   const [hiveName, setHiveName] = useState('');
@@ -163,34 +163,56 @@ export function Onboarding() {
     };
   }, []);
 
-  // OAuth callback lands with ?token=&authed=1 — accept session and advance.
+  // OAuth callback lands with ?authed=1 — session is in an HttpOnly cookie,
+  // never in the URL. Ignore any ?token= an attacker (or an old redirect) added.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
     const authed = params.get('authed');
     const mode = params.get('mode');
-    if (!token && authed !== '1') return;
+    const authError = params.get('auth_error');
+    const scrub = () => {
+      params.delete('token');
+      params.delete('ticket');
+      params.delete('authed');
+      params.delete('mode');
+      params.delete('auth_error');
+      const next = params.toString();
+      const clean = window.location.pathname + (next ? '?' + next : '') + window.location.hash;
+      window.history.replaceState({}, '', clean);
+    };
+    if (authError) {
+      setContactError(
+        authError === 'oauth_denied'
+          ? 'Sign-in was denied. Try again from this device.'
+          : 'Sign-in did not complete. Try again.'
+      );
+      scrub();
+      return;
+    }
+    if (authed !== '1') {
+      if (params.get('token') || params.get('ticket')) scrub();
+      return;
+    }
     let cancelled = false;
     (async () => {
-      if (token) await acceptAuthToken(token);
+      const ok = await acceptOAuthHandoff();
       if (cancelled) return;
+      scrub();
+      if (!ok) {
+        setContactError('Sign-in did not complete. Try again.');
+        return;
+      }
       if (mode === 'oauth' || mode === 'oauth_provisional') {
         setAuthModeNote(mode);
       } else if (providers.mode === 'oauth') {
         setAuthModeNote('oauth');
       }
       setStep('intro');
-      params.delete('token');
-      params.delete('authed');
-      params.delete('mode');
-      const next = params.toString();
-      const clean = window.location.pathname + (next ? '?' + next : '') + window.location.hash;
-      window.history.replaceState({}, '', clean);
     })();
     return () => {
       cancelled = true;
     };
-  }, [acceptAuthToken, providers.mode]);
+  }, [acceptOAuthHandoff, providers.mode]);
 
   const continueDemo = async (provider: AuthProvider, opts?: { contact?: string }) => {
     if (authBusy) return;
@@ -346,6 +368,16 @@ export function Onboarding() {
               Start with email / phone
             </button>
           </div>
+
+          {contactError ? (
+            <p
+              id="gw-oauth-error"
+              role="alert"
+              style={{ color: '#F87171', fontSize: 12.5, margin: '14px 0 0', textAlign: 'center' }}
+            >
+              {contactError}
+            </p>
+          ) : null}
 
           <p
             style={{
