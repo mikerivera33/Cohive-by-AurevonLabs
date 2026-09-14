@@ -97,7 +97,42 @@ export function createApi(deps = {}) {
   const store = deps.store || createStore(seed);
   const scanImportFn = deps.scanImport || defaultScanImport;
 
+  /** Which hive a request touches, so its change counter can be bumped / stamped. */
+  async function hiveOfPath(path, method, parsed) {
+    let m = path.match(/^\/api\/hives\/([^/]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    m = path.match(/^\/api\/trips\/([^/]+)/);
+    if (m) return (await store.hiveOfTrip(decodeURIComponent(m[1]))) || null;
+    if (method === 'POST' && (path === '/api/trips' || /^\/api\/invites\/[^/]+\/accept$/.test(path))) {
+      return parsed?.trip?.hiveId || parsed?.hiveId || parsed?.invite?.hiveId || null;
+    }
+    return null;
+  }
+
+  /**
+   * Route, then keep the hive's change counter in sync: every successful
+   * mutation bumps it, and every successful hive/trip response carries
+   * `sync: { hiveId, version }` so clients know what they have already seen.
+   */
   async function dispatch(method, pathname, headers, bodyText, ip, search = '') {
+    const res = await route(method, pathname, headers, bodyText, ip, search);
+    if (res.status >= 300 || !res.body || method === 'OPTIONS') return res;
+    let parsed;
+    try {
+      parsed = JSON.parse(res.body);
+    } catch {
+      return res;
+    }
+    if (!parsed || typeof parsed !== 'object') return res;
+    const path = pathname.replace(/\/+$/, '') || '/';
+    const hiveId = await hiveOfPath(path, method, parsed);
+    if (!hiveId) return res;
+    const sync = method === 'GET' ? await store.peekHiveVersion(hiveId) : await store.bumpHive(hiveId);
+    if (!sync || sync.error) return res;
+    return { ...res, body: JSON.stringify({ ...parsed, sync: { hiveId: String(hiveId), version: sync.version } }) };
+  }
+
+  async function route(method, pathname, headers, bodyText, ip, search = '') {
     if (method === 'OPTIONS') {
       return { status: 204, headers: { ...CORS }, body: '' };
     }
@@ -317,6 +352,7 @@ export function createApi(deps = {}) {
         result.error ? json(result.status, { error: result.error }) : json(status, extra ? { ...result, ...extra } : result);
 
       if (method === 'GET' && rest === '') return send(200, await store.getHive(hiveId, user.id));
+      if (method === 'GET' && rest === '/version') return send(200, await store.hiveVersion(hiveId, user.id));
       if (method === 'POST' && rest === '/trips') return send(201, await store.createTrip(user.id, { ...body, hiveId }));
       if (method === 'POST' && rest === '/members') {
         const result = await store.addMember(hiveId, user.id, body.name);

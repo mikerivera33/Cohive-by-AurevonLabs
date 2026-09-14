@@ -73,7 +73,9 @@ export function createStore(seed = null, options = {}) {
 
   const users = new Map(); // email → user, id → user
   const sessions = new Map(); // token → { userId, expiresAt }
-  const hives = new Map(); // hiveId → hive
+  const hives = new Map();
+  /** hiveId → { version, updatedAt } — bumped on every change inside the hive. */
+  const hiveVersions = new Map(); // hiveId → hive
   const memberships = new Map(); // hiveId → [{ userId|null, memberId, name, color, role }]
   const trips = new Map(); // tripId → trip (with hiveId)
   const spotsByTrip = new Map();
@@ -144,6 +146,7 @@ export function createStore(seed = null, options = {}) {
       nestByHive: mapOfArrays(nestByHive),
       tableByHive: mapOfArrays(tableByHive),
       invites: [...invites.values()].map((x) => ({ ...x })),
+      hiveVersions: [...hiveVersions.entries()].map(([hiveId, v]) => ({ hiveId, ...v })),
       entitlements: [...entitlements.entries()].map(([userId, e]) => ({ userId, ...e })),
       billingEvents: [...billingEvents],
       magicLinks: [...magicLinks.entries()].map(([hash, m]) => ({ hash, ...m })),
@@ -155,7 +158,8 @@ export function createStore(seed = null, options = {}) {
 
   function hydrate(snap) {
     if (!snap) return;
-    for (const m of [users, sessions, hives, memberships, trips, spotsByTrip, votesByTrip, fundByTrip, nestByHive, tableByHive, invites, magicLinks, entitlements, billingEvents]) m.clear();
+    for (const m of [users, sessions, hives, memberships, trips, spotsByTrip, votesByTrip, fundByTrip, nestByHive, tableByHive, invites, magicLinks, entitlements, billingEvents, hiveVersions]) m.clear();
+    for (const v of snap.hiveVersions || []) hiveVersions.set(String(v.hiveId), { version: Number(v.version) || 0, updatedAt: v.updatedAt || now() });
 
     for (const u of snap.users || []) {
       if (!u?.id || !u?.email) continue;
@@ -778,6 +782,30 @@ export function createStore(seed = null, options = {}) {
     return meProfile(user);
   }
 
+
+  /* ── live updates ──────────────────────────────────────────── */
+
+  function bumpHive(hiveId) {
+    if (!hives.has(String(hiveId))) return null;
+    const cur = hiveVersions.get(String(hiveId)) || { version: 0, updatedAt: now() };
+    const next = { version: cur.version + 1, updatedAt: now() };
+    hiveVersions.set(String(hiveId), next);
+    schedulePersist();
+    return next;
+  }
+
+  /** No ACL — for stamping responses whose route already checked membership. */
+  function peekHiveVersion(hiveId) {
+    const hive = hives.get(String(hiveId));
+    if (!hive) return null;
+    const cur = hiveVersions.get(String(hiveId)) || { version: 0, updatedAt: hive.createdAt };
+    return { hiveId: String(hiveId), ...cur };
+  }
+
+  function hiveVersion(hiveId, userId) {
+    return requireHiveMember(hiveId, userId) || peekHiveVersion(hiveId);
+  }
+
   /* ── money ────────────────────────────────────────────────── */
 
   function books(tripId) {
@@ -897,6 +925,9 @@ export function createStore(seed = null, options = {}) {
     addExpense,
     voidExpense,
     updateProfile,
+    bumpHive,
+    hiveVersion,
+    peekHiveVersion,
     isMember,
     requireMember,
     requireHiveMember,

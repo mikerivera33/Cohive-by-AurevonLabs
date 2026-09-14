@@ -240,6 +240,22 @@ await aok('payout handle persists on users and surfaces on hive members', async 
   assert.equal(trip.data.members.find((m) => m.id === placeholder).payHandle, 'cashapp:$ada');
 });
 
+await aok('live updates: version stamped on reads, bumped by writes, durable on Postgres', async () => {
+  const trip = await call('GET', '/api/trips/' + magicTrip, undefined, bo.token);
+  const { hiveId, version } = trip.data.sync;
+  const v0 = await call('GET', `/api/hives/${hiveId}/version`, undefined, bo.token);
+  assert.equal(v0.data.version, version);
+  const stranger = await store.demoAuth({ provider: 'email', name: 'Nosy' });
+  const denied = await call('GET', `/api/hives/${hiveId}/version`, undefined, stranger.token);
+  assert.equal(denied.status, 403);
+  const w = await call('POST', '/api/trips/' + magicTrip + '/votes', { spotId: 1, tier: 'maybe' }, bo.token);
+  assert.equal(w.data.sync.version, version + 1);
+  const back = await call('POST', '/api/trips/' + magicTrip + '/votes', { spotId: 1, tier: 'must' }, bo.token);
+  assert.equal(back.data.sync.version, version + 2);
+  const again = await createPgStore(seed, { url });
+  assert.equal((await again.peekHiveVersion(hiveId)).version, version + 2);
+});
+
 await aok('trip limit and createTrip enforce membership counts', async () => {
   for (let i = 0; i < 2; i++) {
     const r = await call('POST', '/api/trips', { name: 'Trip ' + i, lat: 1, lng: 1 }, bo.token);

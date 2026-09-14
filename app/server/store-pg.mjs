@@ -843,6 +843,22 @@ export async function createPgStore(seed, { url }) {
     });
   }
 
+  /* ── live updates ──────────────────────────────────────────── */
+  async function bumpHive(hiveId) {
+    const r = await db.query('UPDATE hives SET version = version + 1, updated_at = now() WHERE id = $1 RETURNING version, updated_at', [String(hiveId)]);
+    return r.rows[0] ? { version: Number(r.rows[0].version), updatedAt: r.rows[0].updated_at } : null;
+  }
+
+  /** No ACL — for stamping responses whose route already checked membership. */
+  async function peekHiveVersion(hiveId) {
+    const r = await db.query('SELECT version, updated_at FROM hives WHERE id = $1', [String(hiveId)]);
+    return r.rows[0] ? { hiveId: String(hiveId), version: Number(r.rows[0].version), updatedAt: r.rows[0].updated_at } : null;
+  }
+
+  async function hiveVersion(hiveId, userId) {
+    return (await requireHiveMember(hiveId, userId)) || peekHiveVersion(hiveId);
+  }
+
   return {
     backend: 'postgres',
     register,
@@ -882,6 +898,9 @@ export async function createPgStore(seed, { url }) {
     addExpense,
     voidExpense,
     updateProfile,
+    bumpHive,
+    hiveVersion,
+    peekHiveVersion,
     isMember,
     requireMember,
     requireHiveMember,
