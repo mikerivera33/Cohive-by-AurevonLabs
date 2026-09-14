@@ -35,6 +35,8 @@ import {
   apiUpdateProfile,
   apiUpdateRestaurant,
   apiVoidExpense,
+  apiHiveVersion,
+  onHiveSync,
   apiCastVote,
   apiContribute,
   apiCreateInvite,
@@ -110,6 +112,8 @@ export interface ExpenseOpts {
 }
 
 const sameId = (a: MemberId, b: MemberId) => String(a) === String(b);
+/** How often a live client asks the hive whether anyone else changed something. */
+const LIVE_POLL_MS = 8000;
 const isTier = (v: unknown): v is PlanTier =>
   v === 'Free' || v === 'Cohive+' || v === 'Cohive+ Annual' || v === 'Platinum';
 
@@ -377,6 +381,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     apiLiveRef.current = apiLive;
   }, [apiLive]);
 
+
   useEffect(
     () => () => {
       window.clearTimeout(toastTimer.current);
@@ -392,8 +397,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toastTimer.current = window.setTimeout(() => setToast(''), 2200);
   }, []);
 
-  const hydrateFromApi = useCallback(async (tripId: string) => {
+  /** Newest hive version this client has seen — its own writes stamp it, so only strangers' changes trigger a refresh. */
+  const seenVersion = useRef<{ hiveId: string; version: number } | null>(null);
+  useEffect(() => {
+    onHiveSync((s) => {
+      const cur = seenVersion.current;
+      if (!cur || cur.hiveId !== s.hiveId || s.version > cur.version) seenVersion.current = { hiveId: s.hiveId, version: s.version };
+    });
+    return () => onHiveSync(null);
+  }, []);
+
+  /** Load (or, with `refresh`, silently re-sync) a trip and its hive from the API. */
+  const hydrateFromApi = useCallback(async (tripId: string, opts: { refresh?: boolean } = {}) => {
     const data = await apiGetTrip(tripId);
+    const refresh = Boolean(opts.refresh);
     setApiTripId(tripId);
     setApiLive(true);
     setCurrentTripId(tripId);
@@ -412,8 +429,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMembers(data.members.map((m) => ({ id: m.id, name: m.name, color: m.color })));
     setFund((data.fund || []).map((f) => ({ ...f })));
     if (data.trip.expenses) setExpenses(data.trip.expenses.map((e) => ({ ...e })));
-    setPlan(null);
-    setInviteLinks({});
+    if (!refresh) {
+      setPlan(null);
+      setInviteLinks({});
+    }
     if (data.me) setMeId(data.me);
     if (data.trip.hiveId) {
       try {
@@ -426,6 +445,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Trip screens still work; Nest/Table keep whatever was loaded.
       }
     }
+    if (refresh) return;
     try {
       const profile = await apiMe();
       if (!data.me) setMeId(profile.user.id);
@@ -434,6 +454,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Stay on the demo identity; money actions will simply be refused server-side.
     }
   }, []);
+
+  /**
+   * Live updates: while the API is live and the tab is visible, poll the hive's
+   * change counter and re-sync when another member changed something.
+   */
+  useEffect(() => {
+    if (!apiLive || !tripMeta.hiveId) return;
+    const hiveId = tripMeta.hiveId;
+    let busy = false;
+    const tick = async () => {
+      if (busy || document.visibilityState === 'hidden' || !apiTripIdRef.current) return;
+      busy = true;
+      const before = seenVersion.current;
+      try {
+        const remote = await apiHiveVersion(hiveId);
+        if (before && before.hiveId === hiveId && remote.version > before.version) {
+          // The poll response is itself stamped, so seenVersion already sits at
+          // `remote`. If the re-sync fails, roll the watermark back so the next
+          // tick retries instead of silently treating the change as seen.
+          try {
+            await hydrateFromApi(apiTripIdRef.current, { refresh: true });
+          } catch (e) {
+            seenVersion.current = before;
+            throw e;
+          }
+          say('Your hive changed — synced');
+        }
+      } catch {
+        // Offline blips are fine; the next tick retries.
+      } finally {
+        busy = false;
+      }
+    };
+    const id = window.setInterval(tick, LIVE_POLL_MS);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [apiLive, tripMeta.hiveId, hydrateFromApi, say]);
 
   /** The server's entitlement wins over whatever the demo sheet stored locally. */
   function applyProfile(p: { entitlement: { tier: PlanTier }; referralCode: string | null; payHandle?: string | null }) {

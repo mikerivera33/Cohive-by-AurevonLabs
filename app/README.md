@@ -148,7 +148,7 @@ The API (`server/`) runs on one of two stores behind the same interface:
 
 ```bash
 # local Postgres for the store checks
-DATABASE_URL=postgres://cohive:cohive@127.0.0.1:5432/cohive_test npm run verify:pg   # 18 checks
+DATABASE_URL=postgres://cohive:cohive@127.0.0.1:5432/cohive_test npm run verify:pg   # 19 checks
 DATABASE_URL=... npm start                                                             # API + static app on :8080
 ```
 
@@ -188,6 +188,16 @@ settle-up hands off to the payee's own app instead. `POST /api/auth/me/profile {
 stores `venmo:@name`, `cashapp:$tag` or `paypal:name` (`''` clears); members expose it, and the
 Budget view turns each "A pays B" line into a one-tap Venmo / Cash App / PayPal link
 (`src/lib/payLinks.ts`) pre-filled with the amount and trip name.
+
+### Live updates
+
+Every hive carries a change counter (`hives.version` on Postgres, migration 005). The API bumps it
+on any successful write inside the hive and stamps every hive/trip response with
+`sync: { hiveId, version }`; `GET /api/hives/:id/version` is the cheap poll. A live client
+remembers the newest version its own requests returned and, while the tab is visible, asks every
+8 s — only a version it has not seen (someone else's change) triggers a silent re-sync of the trip,
+members, books, Nest and Table, keeping the generated itinerary and invite links intact. Polling
+rather than SSE so the same code works behind Netlify functions and the Node server alike.
 
 ### Hives
 

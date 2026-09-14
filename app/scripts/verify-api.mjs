@@ -461,6 +461,27 @@ console.log('\nmoney — pot + splitting');
     const clear = await call('POST', '/api/auth/me/profile', { payHandle: '' }, a.token);
     assert.equal(clear.data.payHandle, null);
   });
+
+  await aok('live updates: hive/trip responses carry sync, mutations bump it, non-members cannot read it', async () => {
+    const trip = await call('GET', '/api/trips/1', undefined, a.token);
+    assert.ok(trip.data.sync && typeof trip.data.sync.version === 'number', 'GET is stamped with sync');
+    const { hiveId, version } = trip.data.sync;
+    const v0 = await call('GET', `/api/hives/${hiveId}/version`, undefined, a.token);
+    assert.equal(v0.status, 200);
+    assert.equal(v0.data.version, version);
+    const c = await call('POST', '/api/trips/1/fund/contributions', { amount: 1 }, b.token);
+    assert.equal(c.status, 201);
+    assert.equal(c.data.sync.version, version + 1, 'a write bumps the counter and returns it');
+    const bad = await call('POST', '/api/trips/1/fund/contributions', { amount: -1 }, b.token);
+    assert.equal(bad.status, 400);
+    const v1 = await call('GET', `/api/hives/${hiveId}/version`, undefined, a.token);
+    assert.equal(v1.data.version, version + 1, 'a refused write does not bump');
+    assert.equal(s.hiveVersion(hiveId, 'nobody').error, 'forbidden');
+    const snap = JSON.parse(JSON.stringify(s._snapshot()));
+    const s2 = createStore(seed);
+    s2.hydrate(snap);
+    assert.equal(s2.peekHiveVersion(hiveId).version, version + 1, 'the counter survives a snapshot');
+  });
 }
 
 console.log('\nidentity + invites (memory store)');

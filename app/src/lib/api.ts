@@ -49,6 +49,17 @@ export function clearApiToken(): void {
   save(TOKEN_KEY, '');
 }
 
+/** Hive change counter stamped on every hive/trip response — see the server's `dispatch`. */
+export interface HiveSync {
+  hiveId: string;
+  version: number;
+}
+let syncListener: ((s: HiveSync) => void) | null = null;
+/** The store registers here so its own writes never look like someone else's change. */
+export function onHiveSync(fn: ((s: HiveSync) => void) | null): void {
+  syncListener = fn;
+}
+
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers || {});
   if (!headers.has('Content-Type') && init.body) {
@@ -74,6 +85,8 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     throw new ApiError(res.status, data.error || 'request_failed', data as Record<string, unknown>);
   }
+  const sync = (data as { sync?: HiveSync }).sync;
+  if (sync && typeof sync.version === 'number' && syncListener) syncListener(sync);
   return data;
 }
 
@@ -281,6 +294,11 @@ export async function apiAddRestaurant(hiveId: string, input: Partial<Restaurant
 
 export async function apiUpdateRestaurant(hiveId: string, id: number, patch: { tried?: boolean; tier?: RestaurantTier }) {
   return apiFetch<{ restaurant: Restaurant }>(hivePath(hiveId, '/table/' + id), { method: 'POST', body: JSON.stringify(patch) });
+}
+
+/** Lightweight poll: has anyone changed anything in this hive since `version`? */
+export async function apiHiveVersion(hiveId: string) {
+  return apiFetch<HiveSync & { updatedAt: string }>(`/api/hives/${encodeURIComponent(hiveId)}/version`);
 }
 
 export async function apiGetTrip(tripId: string) {
