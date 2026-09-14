@@ -15,12 +15,18 @@ export const LIMITS = {
   MAX_EXPENSES_PER_TRIP: 500,
   MAX_FUND_ENTRIES_PER_TRIP: 1000,
   MAX_INVITES_PER_TRIP: 200,
+  FREE_HIVE_LIMIT: 3,
+  FREE_TRIPS_PER_HIVE: 3,
+  MAX_LISTINGS_PER_HIVE: 300,
+  MAX_RESTAURANTS_PER_HIVE: 300,
   SESSION_TTL_MS: 30 * 24 * 60 * 60 * 1000,
   MAGIC_TTL_MS: 15 * 60 * 1000,
   INVITE_TTL_MS: 14 * 24 * 60 * 60 * 1000,
 };
 
 export const MEMBER_COLORS = ['#60A5FA', '#F472B6', '#34D399', '#A78BFA', '#FBBF24'];
+export const REACTIONS = ['💍', '🪴'];
+export const TIERS = new Set(['must', 'maybe', 'iftime']);
 export const OWNER_COLOR = '#4EB4FF';
 
 export const ALLOWED_CATEGORIES = new Set([
@@ -136,12 +142,61 @@ export function tripFromBody(body, ownerId, id) {
   };
 }
 
+/** Normalise a create-hive body. */
+export function hiveFromBody(body, ownerId, id) {
+  return { id, name: cleanText(body?.name || 'My hive', 60) || 'My hive', ownerId, createdAt: new Date().toISOString() };
+}
+
+/** Normalise a saved home listing (Nest). */
+export function listingFromInput(input, id) {
+  const title = cleanText(input?.title, 120);
+  if (!title) return { error: 'invalid_title', status: 400 };
+  return {
+    listing: {
+      id,
+      title,
+      price: Math.round(clampFinite(input?.price, 0, 1_000_000)),
+      beds: clampFinite(input?.beds, 1, 20),
+      baths: clampFinite(input?.baths, 1, 20),
+      sqft: Math.round(clampFinite(input?.sqft, 0, 100_000)),
+      hood: cleanText(input?.hood, 60),
+      lat: clampLat(input?.lat),
+      lng: clampLng(input?.lng),
+      source: cleanText(input?.source || 'saved', 40).toLowerCase(),
+      note: cleanText(input?.note, 240),
+      reactions: Object.fromEntries(REACTIONS.map((r) => [r, []])),
+      tagged: null,
+    },
+  };
+}
+
+/** Normalise a dinner-list entry (Table). */
+export function restaurantFromInput(input, id) {
+  const name = cleanText(input?.name, 120);
+  if (!name) return { error: 'invalid_name', status: 400 };
+  return {
+    restaurant: {
+      id,
+      name,
+      cuisine: cleanText(input?.cuisine, 60) || 'Dinner',
+      mood: cleanText(input?.mood, 30) || 'Cozy',
+      price: /^\$+$/.test(String(input?.price || '')) ? String(input.price).slice(0, 4) : '$$',
+      hood: cleanText(input?.hood, 60),
+      lat: clampLat(input?.lat),
+      lng: clampLng(input?.lng),
+      hours: cleanText(input?.hours, 40),
+      tried: Boolean(input?.tried),
+      tier: TIERS.has(input?.tier) ? input.tier : 'maybe',
+    },
+  };
+}
+
 /** Shape an invite row for API responses. */
 export function publicInvite(i) {
   const expiresAt = typeof i.expiresAt === 'number' ? new Date(i.expiresAt).toISOString() : i.expiresAt;
   return {
     code: i.code,
-    tripId: String(i.tripId),
+    hiveId: String(i.hiveId),
     memberId: i.memberId || null,
     expiresAt,
     maxUses: i.maxUses,

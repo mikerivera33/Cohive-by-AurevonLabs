@@ -496,4 +496,95 @@ console.log('\nidentity + invites (memory store)');
   });
 }
 
+console.log('\nhives — trips, Nest and Table inside one membership unit (memory store)');
+{
+  const s = createStore(seed);
+  const m = createApi({ store: s, scanImport });
+  const call = async (method, path, body, token) => {
+    const res = await m.handle(
+      new Request('http://x' + path, {
+        method,
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      })
+    );
+    return { status: res.status, data: await res.json().catch(() => ({})) };
+  };
+  const owner = s.demoAuth({ provider: 'email', name: 'Hal' });
+  const stranger = s.register({ email: 'ivy@example.com', name: 'Ivy', password: 'hunter2hunter2' });
+
+  await aok('the seed hive lists its trip, members, Nest and Table; strangers get 403', async () => {
+    const hives = await call('GET', '/api/hives', undefined, owner.token);
+    assert.equal(hives.data.hives.length, 1);
+    assert.equal(hives.data.hives[0].trips[0].id, '1');
+    const h = await call('GET', '/api/hives/1', undefined, owner.token);
+    assert.equal(h.status, 200);
+    assert.equal(h.data.me, owner.user.id);
+    assert.ok(h.data.nest.length >= 3 && h.data.table.length >= 3);
+    assert.equal((await call('GET', '/api/hives/1', undefined, stranger.token)).status, 403);
+    assert.equal((await call('POST', '/api/hives/1/nest', { title: 'x' }, stranger.token)).status, 403);
+  });
+
+  await aok('trips are capped per hive on Free; a new hive starts its own count', async () => {
+    assert.equal((await call('POST', '/api/hives/1/trips', { name: 'Kyoto', lat: 35, lng: 135 }, owner.token)).status, 201);
+    assert.equal((await call('POST', '/api/hives/1/trips', { name: 'Osaka' }, owner.token)).status, 201);
+    const over = await call('POST', '/api/hives/1/trips', { name: 'Nara' }, owner.token);
+    assert.equal(over.status, 402);
+    assert.equal(over.data.error, 'trip_limit');
+    const hive = await call('POST', '/api/hives', { name: '<b>Ski</b> crew' }, owner.token);
+    assert.equal(hive.status, 201);
+    assert.equal(hive.data.hive.name, 'Ski crew');
+    assert.equal(hive.data.hive.role, 'owner');
+    assert.equal((await call('POST', '/api/hives/' + hive.data.hive.id + '/trips', { name: 'Niseko' }, owner.token)).status, 201);
+  });
+
+  await aok('Nest: save a listing and toggle a reaction keyed by member id', async () => {
+    const add = await call('POST', '/api/hives/1/nest', { title: 'Bushwick 1BR', price: 2600.7, beds: 1, baths: 1, hood: 'Bushwick', lat: 40.69, lng: -73.92 }, owner.token);
+    assert.equal(add.status, 201);
+    assert.equal(add.data.listing.price, 2601);
+    const on = await call('POST', '/api/hives/1/nest/' + add.data.listing.id + '/react', { emoji: '💍' }, owner.token);
+    assert.deepEqual(on.data.listing.reactions['💍'], [owner.user.id]);
+    const off = await call('POST', '/api/hives/1/nest/' + add.data.listing.id + '/react', { emoji: '💍' }, owner.token);
+    assert.deepEqual(off.data.listing.reactions['💍'], []);
+    assert.equal((await call('POST', '/api/hives/1/nest/' + add.data.listing.id + '/react', { emoji: '🔥' }, owner.token)).status, 400);
+    assert.equal((await call('POST', '/api/hives/1/nest', { title: '' }, owner.token)).status, 400);
+  });
+
+  await aok('Table: add a place, mark it tried, move its tier; bad tiers are refused', async () => {
+    const add = await call('POST', '/api/hives/1/table', { name: 'Kru', cuisine: 'Thai', hood: 'Greenpoint', price: '$$$' }, owner.token);
+    assert.equal(add.status, 201);
+    assert.equal(add.data.restaurant.tier, 'maybe');
+    const id = add.data.restaurant.id;
+    const upd = await call('POST', '/api/hives/1/table/' + id, { tried: true, tier: 'must' }, owner.token);
+    assert.equal(upd.data.restaurant.tried, true);
+    assert.equal(upd.data.restaurant.tier, 'must');
+    assert.equal((await call('POST', '/api/hives/1/table/' + id, { tier: 'never' }, owner.token)).status, 400);
+    const hive = await call('GET', '/api/hives/1', undefined, owner.token);
+    assert.ok(hive.data.table.some((r) => r.id === id && r.tried));
+  });
+
+  await aok('a hive invite admits the member to every trip in the hive', async () => {
+    const inv = await call('POST', '/api/hives/1/invites', { maxUses: 2 }, owner.token);
+    assert.equal(inv.status, 201);
+    const joined = await call('POST', '/api/invites/' + inv.data.invite.code + '/accept', {}, stranger.token);
+    assert.equal(joined.data.joined, true);
+    assert.equal(joined.data.hive.id, '1');
+    const trips = await call('GET', '/api/trips', undefined, stranger.token);
+    assert.equal(trips.data.trips.length, 3, 'all three trips of the hive');
+    assert.equal((await call('GET', '/api/hives/1', undefined, stranger.token)).status, 200);
+  });
+
+  await aok('pre-hive snapshots hydrate into hives', async () => {
+    const snap = JSON.parse(JSON.stringify(s._snapshot()));
+    delete snap.hives;
+    for (const t of snap.trips) delete t.hiveId;
+    for (const i of snap.invites) { i.tripId = i.hiveId; delete i.hiveId; }
+    const s2 = createStore(seed);
+    s2.hydrate(snap);
+    assert.ok(s2._hives.has('1'));
+    assert.equal(s2.getTrip('1', owner.user.id).trip.hiveId, '1');
+    assert.ok(!s2.getHive('1', stranger.user.id).error, 'invited member survives the migration');
+  });
+}
+
 console.log(`\nverify:api — ${passed} checks passed`);

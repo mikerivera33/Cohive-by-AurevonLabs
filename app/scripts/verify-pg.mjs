@@ -234,6 +234,34 @@ await aok('account deletion revokes sessions and anonymises, ledger stays balanc
   assert.equal(login.status, 401);
 });
 
+await aok('hives: list, create, per-hive trip cap, Nest + Table CRUD on Postgres', async () => {
+  const hives = await call('GET', '/api/hives', undefined, bo.token);
+  assert.equal(hives.data.hives.length, 1);
+  const hiveId = hives.data.hives[0].id;
+  assert.equal(hives.data.hives[0].trips[0].id, magicTrip);
+  const full = await call('GET', '/api/hives/' + hiveId, undefined, bo.token);
+  assert.equal(full.data.me, bo.user.id);
+  assert.equal(full.data.nest.length, 0, 'a real account starts with an empty Nest');
+  const add = await call('POST', '/api/hives/' + hiveId + '/nest', { title: 'Bushwick 1BR', price: 2600, hood: 'Bushwick', lat: 40.69, lng: -73.92 }, bo.token);
+  assert.equal(add.status, 201);
+  const on = await call('POST', '/api/hives/' + hiveId + '/nest/' + add.data.listing.id + '/react', { emoji: '🪴' }, bo.token);
+  assert.deepEqual(on.data.listing.reactions['🪴'], [bo.user.id]);
+  const dish = await call('POST', '/api/hives/' + hiveId + '/table', { name: 'Kru', cuisine: 'Thai', hood: 'Greenpoint' }, bo.token);
+  assert.equal(dish.status, 201);
+  const upd = await call('POST', '/api/hives/' + hiveId + '/table/' + dish.data.restaurant.id, { tried: true, tier: 'must' }, bo.token);
+  assert.equal(upd.data.restaurant.tried, true);
+  const again = await call('GET', '/api/hives/' + hiveId, undefined, bo.token);
+  assert.equal(again.data.nest.length, 1);
+  assert.equal(again.data.table[0].tier, 'must');
+  const over = await call('POST', '/api/hives/' + hiveId + '/trips', { name: 'one too many' }, bo.token);
+  assert.equal(over.status, 402, 'three trips already exist in this hive');
+  const made = await call('POST', '/api/hives', { name: 'Ski crew' }, bo.token);
+  assert.equal(made.status, 201);
+  assert.equal((await call('POST', '/api/hives/' + made.data.hive.id + '/trips', { name: 'Niseko' }, bo.token)).status, 201);
+  const cy = await store.demoAuth({ provider: 'email', name: 'Cy' });
+  assert.equal((await call('GET', '/api/hives/' + made.data.hive.id, undefined, cy.token)).status, 403);
+});
+
 await aok('a second store instance on the same database sees everything (durability)', async () => {
   const s2 = await createPgStore(seed, { url });
   const user = await s2.getSessionUser(bo.token);

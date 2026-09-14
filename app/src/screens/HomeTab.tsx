@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import { MapPreview } from '../components/MapPreview';
 import type { MapMarker } from '../components/LazyMap';
@@ -27,7 +27,16 @@ const greeting = (): string => {
 };
 
 export function HomeTab() {
-  const { spots, nest, table, activity, members, light, setTab } = useApp();
+  const { spots, nest, table, activity, members, light, setTab, hive, trips, currentTripId, switchTrip, createTrip, trip } = useApp();
+  const [newName, setNewName] = useState('');
+  const [newCity, setNewCity] = useState('');
+
+  const onCreate = async () => {
+    if (await createTrip(newName, newCity)) {
+      setNewName('');
+      setNewCity('');
+    }
+  };
 
   const markers = useMemo<MapMarker[]>(
     () => spots.map((s) => ({ lat: s.lat, lng: s.lng, color: catColor(s.category), label: s.name })),
@@ -36,9 +45,9 @@ export function HomeTab() {
 
   const cards: HiveCard[] = [
     {
-      name: 'Tokyo Crew',
+      name: hive.name,
       kind: 'Bucketlist · Trip',
-      desc: 'Sep 1–4 · itinerary in progress',
+      desc: `${trip.name} · ${trip.city || 'somewhere new'} · ${trip.startDate}`,
       accent: 'var(--honey)',
       tab: 'trip',
       dots: ['#4EB4FF', '#A78BFA', '#34D399'],
@@ -110,7 +119,7 @@ export function HomeTab() {
           }}
         >
           <b className="grot" style={{ fontSize: 12, color: 'var(--honey)' }}>
-            Tokyo Adventure
+            {trip.name}
           </b>
           <span>
             <b className="grot" style={{ color: 'var(--ink)' }}>
@@ -120,6 +129,56 @@ export function HomeTab() {
           </span>
         </div>
       </MapPreview>
+
+      <h2 className="sectionTitle" style={{ margin: '0 0 8px' }}>
+        Your trips
+      </h2>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        {trips.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className="press grot"
+            aria-pressed={t.id === currentTripId}
+            onClick={() => void switchTrip(t.id)}
+            style={{
+              ...press(0.95),
+              minHeight: 44,
+              padding: '0 14px',
+              borderRadius: 999,
+              border: t.id === currentTripId ? '1px solid var(--honey)' : '1px solid var(--lineB)',
+              background: t.id === currentTripId ? 'var(--panelS)' : 'var(--bg2)',
+              color: t.id === currentTripId ? 'var(--honey)' : 'var(--soft)',
+              fontWeight: 600,
+              fontSize: 11.5,
+              cursor: 'pointer',
+            }}
+          >
+            {t.name}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
+        <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New trip — e.g. Kyoto weekend" aria-label="New trip name" style={{ flex: '1 1 120px', minWidth: 0 }} />
+        <input value={newCity} onChange={(e) => setNewCity(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void onCreate()} placeholder="City" aria-label="New trip city" style={{ flex: '1 1 90px', minWidth: 0 }} />
+        <button type="button" className="press grot" onClick={() => void onCreate()} style={{
+                ...press(0.98),
+                minHeight: 44,
+                background: 'var(--panelS)',
+                border: '1px solid var(--lineB)',
+                color: 'var(--honey)',
+                borderRadius: 999,
+                padding: '0 16px',
+                fontWeight: 700,
+                fontSize: 11,
+                letterSpacing: '.08em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}>
+          Create trip
+        </button>
+      </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {cards.map((hv) => (

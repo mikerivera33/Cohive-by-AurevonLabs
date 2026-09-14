@@ -46,10 +46,10 @@ jobs:
       - name: Engine property checks (46)
         run: npm run verify:engine
 
-      - name: API auth, ACL, sanitize, rate limits (34)
+      - name: API auth, ACL, sanitize, rate limits, hives (40)
         run: npm run verify:api
 
-      - name: Postgres store — auth, invites, money concurrency, durability (14)
+      - name: Postgres store — auth, invites, money concurrency, durability, hives (15)
         run: npm run verify:pg
         env:
           DATABASE_URL: postgres://cohive:cohive@127.0.0.1:5432/cohive_test
@@ -62,7 +62,7 @@ jobs:
           npm i --no-save playwright@1.56.1
           npx playwright install --with-deps chromium webkit
 
-      - name: Browser walkthrough (71 checks)
+      - name: Browser walkthrough (77 checks)
         run: |
           npx vite preview --port 4173 &
           npx wait-on http://127.0.0.1:4173 --timeout 30000 2>/dev/null \

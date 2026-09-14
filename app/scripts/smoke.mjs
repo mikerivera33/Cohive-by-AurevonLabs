@@ -112,6 +112,34 @@ await check('Escape closes fullscreen map', async () => {
   }
 });
 await check('activity feed', () => has('Hive activity'));
+await check('home: trips row shows the current trip', async () => {
+  await has('Your trips');
+  const n = await page.getByRole('button', { name: 'Tokyo Adventure', exact: true }).count();
+  if (!n) throw new Error('trip chip missing');
+});
+await check('home: creating a trip switches to it; Free cap holds at three', async () => {
+  await page.getByLabel('New trip name').fill('Kyoto weekend');
+  await page.getByLabel('New trip city').fill('Kyoto');
+  await tap('Create trip');
+  await page.waitForTimeout(400);
+  await has('Trip created — Kyoto weekend');
+  await has('Kyoto weekend');
+  await page.getByLabel('New trip name').fill('Osaka nights');
+  await tap('Create trip');
+  await page.waitForTimeout(300);
+  await page.getByLabel('New trip name').fill('One too many');
+  await tap('Create trip');
+  await page.waitForTimeout(400);
+  await has('Free hives hold 3 trips');
+  await page.getByRole('button', { name: 'Close plans' }).click({ position: { x: 215, y: 30 } });
+  await page.waitForTimeout(300);
+});
+await check('home: switching back restores the Tokyo trip and its spots', async () => {
+  await page.getByRole('button', { name: 'Tokyo Adventure', exact: true }).click();
+  await page.waitForTimeout(400);
+  await has('Switched to Tokyo Adventure');
+  await has('spots live');
+});
 await check('plan badge shows Free', () => has('Free'));
 
 console.log('\ntrip');
@@ -297,6 +325,15 @@ await check('nest: pin on map', async () => {
 });
 
 console.log('\ntable');
+await check('nest: saving a listing adds it to the hunt', async () => {
+  await page.getByLabel('Listing title').fill('Bushwick 1BR');
+  await page.getByLabel('Listing rent').fill('2600');
+  await page.getByLabel('Listing neighborhood').fill('Bushwick');
+  await tap('Save listing');
+  await page.waitForTimeout(300);
+  await has('Listing saved to the hive');
+  await has('Bushwick 1BR');
+});
 await check('table tab renders restaurants + map', async () => {
   await page.getByRole('button', { name: /Table/ }).last().click();
   await page.waitForTimeout(500);
@@ -315,6 +352,25 @@ await check('table: every mood filter returns at least one place', async () => {
   }
   await page.getByRole('button', { name: 'All', exact: true }).click();
   await page.waitForTimeout(200);
+});
+await check('table: marking a place tried updates the card and the Untried filter', async () => {
+  await page.getByRole('button', { name: 'Mark tried: Lilia' }).click();
+  await page.waitForTimeout(300);
+  await page.getByRole('button', { name: 'Untried', exact: true }).click();
+  await page.waitForTimeout(300);
+  const still = await page.getByText('Lilia', { exact: true }).count();
+  if (still) throw new Error('Lilia still listed as untried');
+  await page.getByRole('button', { name: 'All', exact: true }).click();
+  await page.waitForTimeout(200);
+});
+await check('table: adding a place appends it to the list', async () => {
+  await page.getByLabel('Place name').fill('Kru');
+  await page.getByLabel('Place cuisine').fill('Thai');
+  await page.getByLabel('Place neighborhood').fill('Greenpoint');
+  await tap('Add place');
+  await page.waitForTimeout(300);
+  await has('Kru added to the list');
+  await has('Thai · Cozy · Greenpoint');
 });
 await check('table: Reserve is gated on Free', async () => {
   await page.getByRole('button', { name: /Reserve/ }).first().click();

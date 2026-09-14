@@ -3,7 +3,23 @@
  * Session token is persisted via the validated storage helpers.
  */
 import { isSessionToken, load, save } from './storage';
-import type { Expense, FundEntry, Member, MemberId, Payer, ScanCandidate, ScanResult, Spot, Tier } from '../types';
+import type {
+  Expense,
+  FundEntry,
+  HiveSummary,
+  Listing,
+  Member,
+  MemberId,
+  Payer,
+  ReactionEmoji,
+  Restaurant,
+  ScanCandidate,
+  ScanResult,
+  Spot,
+  Tier,
+  Tier as RestaurantTier,
+  TripSummary,
+} from '../types';
 
 const TOKEN_KEY = 'apiToken';
 
@@ -194,9 +210,54 @@ export async function apiListTrips() {
   return apiFetch<{ trips: Array<{ id: string; name: string; city: string }> }>('/api/trips');
 }
 
+/* ── hives ────────────────────────────────────────────────── */
+
+const hivePath = (hiveId: string, rest = '') => '/api/hives/' + encodeURIComponent(hiveId) + rest;
+
+export async function apiListHives() {
+  return apiFetch<{ hives: HiveSummary[] }>('/api/hives');
+}
+
+export async function apiGetHive(hiveId: string) {
+  return apiFetch<{
+    hive: HiveSummary;
+    members: Member[];
+    trips: TripSummary[];
+    nest: Listing[];
+    table: Restaurant[];
+    me: MemberId | null;
+  }>(hivePath(hiveId));
+}
+
+export async function apiCreateTrip(hiveId: string, body: { name: string; city?: string; country?: string; lat?: number; lng?: number }) {
+  return apiFetch<{ trip: { id: string; name: string; city: string } }>(hivePath(hiveId, '/trips'), {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function apiAddListing(hiveId: string, input: Partial<Listing>) {
+  return apiFetch<{ listing: Listing }>(hivePath(hiveId, '/nest'), { method: 'POST', body: JSON.stringify(input) });
+}
+
+export async function apiReact(hiveId: string, listingId: number, emoji: ReactionEmoji) {
+  return apiFetch<{ listing: Listing }>(hivePath(hiveId, '/nest/' + listingId + '/react'), {
+    method: 'POST',
+    body: JSON.stringify({ emoji }),
+  });
+}
+
+export async function apiAddRestaurant(hiveId: string, input: Partial<Restaurant>) {
+  return apiFetch<{ restaurant: Restaurant }>(hivePath(hiveId, '/table'), { method: 'POST', body: JSON.stringify(input) });
+}
+
+export async function apiUpdateRestaurant(hiveId: string, id: number, patch: { tried?: boolean; tier?: RestaurantTier }) {
+  return apiFetch<{ restaurant: Restaurant }>(hivePath(hiveId, '/table/' + id), { method: 'POST', body: JSON.stringify(patch) });
+}
+
 export async function apiGetTrip(tripId: string) {
   return apiFetch<{
-    trip: { id: string; name: string; city: string; lat: number; lng: number; expenses?: Expense[] };
+    trip: { id: string; hiveId?: string; name: string; city: string; lat: number; lng: number; expenses?: Expense[] };
     spots: Spot[];
     members: Member[];
     fund?: FundEntry[];

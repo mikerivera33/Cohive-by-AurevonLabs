@@ -191,11 +191,11 @@ export const gazetteer: GazetteerEntry[] = [
 
 /* ---- Nest: NYC apartment hunt ---- */
 export const nest: Listing[] = [
-  { id: 1, title: 'Sunny 2BR in Park Slope', price: 3850, beds: 2, baths: 1, sqft: 850, hood: 'Park Slope', lat: 40.671, lng: -73.9814, source: 'zillow', note: 'Top floor, W/D in unit, pets ok', reactions: { '💍': ['You', 'Maya'], '🪴': [] }, tagged: null },
-  { id: 2, title: 'Greenpoint loft, skyline view', price: 4200, beds: 1, baths: 1, sqft: 780, hood: 'Greenpoint', lat: 40.7304, lng: -73.9515, source: 'streeteasy', note: '14ft ceilings, roof deck', reactions: { '💍': [], '🪴': ['Maya'] }, tagged: null },
-  { id: 3, title: 'Astoria 2BR near the park', price: 2975, beds: 2, baths: 1, sqft: 900, hood: 'Astoria', lat: 40.7644, lng: -73.9235, source: 'zillow', note: 'Renovated kitchen, 2 blocks to N/W', reactions: { '💍': ['Maya'], '🪴': ['You'] }, tagged: null },
+  { id: 1, title: 'Sunny 2BR in Park Slope', price: 3850, beds: 2, baths: 1, sqft: 850, hood: 'Park Slope', lat: 40.671, lng: -73.9814, source: 'zillow', note: 'Top floor, W/D in unit, pets ok', reactions: { '💍': ['1', '2'], '🪴': [] }, tagged: null },
+  { id: 2, title: 'Greenpoint loft, skyline view', price: 4200, beds: 1, baths: 1, sqft: 780, hood: 'Greenpoint', lat: 40.7304, lng: -73.9515, source: 'streeteasy', note: '14ft ceilings, roof deck', reactions: { '💍': [], '🪴': ['2'] }, tagged: null },
+  { id: 3, title: 'Astoria 2BR near the park', price: 2975, beds: 2, baths: 1, sqft: 900, hood: 'Astoria', lat: 40.7644, lng: -73.9235, source: 'zillow', note: 'Renovated kitchen, 2 blocks to N/W', reactions: { '💍': ['2'], '🪴': ['1'] }, tagged: null },
   { id: 4, title: 'Fort Greene brownstone floor-through', price: 4650, beds: 2, baths: 1.5, sqft: 1050, hood: 'Fort Greene', lat: 40.6892, lng: -73.9742, source: 'instagram', note: 'Original details, garden access', reactions: { '💍': [], '🪴': [] }, tagged: 'Maya tagged you — “the one with the mantel 👀”' },
-  { id: 5, title: 'LIC high-rise 1BR + den', price: 3600, beds: 1, baths: 1, sqft: 720, hood: 'Long Island City', lat: 40.7447, lng: -73.9485, source: 'zillow', note: 'Gym + doorman, den fits a desk', reactions: { '💍': [], '🪴': ['You'] }, tagged: null },
+  { id: 5, title: 'LIC high-rise 1BR + den', price: 3600, beds: 1, baths: 1, sqft: 720, hood: 'Long Island City', lat: 40.7447, lng: -73.9485, source: 'zillow', note: 'Gym + doorman, den fits a desk', reactions: { '💍': [], '🪴': ['1'] }, tagged: null },
 ];
 
 /* ---- Table: date-night list, NYC ---- */
