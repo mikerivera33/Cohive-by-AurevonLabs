@@ -20,6 +20,7 @@ npm run build          # tsc --noEmit + vite build
 npm run verify:engine  # 46 engine property checks (itinerary + money ledger)
 npm run stress:engine  # seeded fuzz: 300 trips + 2,000 scanner inputs
 npm run smoke          # 71-check browser walkthrough (needs Playwright — see app/README.md)
+npm run e2e:payments   # 21-check payments walkthrough on an iPhone viewport (pot, tiers, booking gate, iOS tap targets)
 npm run stress         # browser endurance: heap/node/listener tracking, floods, spam
 npm run a11y           # axe audit, all screens, both themes — must stay clean
 ```
