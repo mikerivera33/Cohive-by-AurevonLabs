@@ -12,6 +12,8 @@ import { takeToken } from './rateLimit.mjs';
 import { MAX_JSON_BODY_BYTES, parseJsonBody } from './safeJson.mjs';
 import { scanImport as defaultScanImport } from './engine-bundle.mjs';
 import { authorizeUrl, exchangeCode, oauthConfig, providersPayload } from './oauth.mjs';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
 import { mailConfigured, sendMagicLink } from './mail.mjs';
 
 const SCAN_LIMIT_USER = { limit: 30, windowMs: 60_000 };
@@ -250,7 +252,31 @@ export function createApi(deps = {}) {
     }
     if (method === 'GET' && path === '/api/auth/me') {
       if (!user) return json(401, { error: 'unauthorized' });
-      return json(200, { user: store.publicUser(user) });
+      return json(200, await store.meProfile(user));
+    }
+
+    // ── Billing: normalised events from RevenueCat / Stripe / App Store adapters ──
+    if (method === 'POST' && path === '/api/billing/webhook') {
+      const limited = rateLimitAuth();
+      if (limited) return limited;
+      const secret = process.env.COHIVE_BILLING_SECRET || '';
+      if (!secret) return json(503, { error: 'billing_not_configured' });
+      const given = String(headers.get?.('x-cohive-signature') || headers['x-cohive-signature'] || '');
+      const want = createHmac('sha256', secret).update(bodyText || '').digest('hex');
+      const a = Buffer.from(given, 'utf8');
+      const b = Buffer.from(want, 'utf8');
+      if (a.length !== b.length || !timingSafeEqual(a, b)) return json(401, { error: 'bad_signature' });
+      const result = await store.applyEntitlement(body);
+      if (result.error) return json(result.status, { error: result.error });
+      return json(200, result);
+    }
+    // Demo purchases mirror the pricing sheet server-side — never in production.
+    if (method === 'POST' && path === '/api/billing/demo-purchase') {
+      if (!user) return json(401, { error: 'unauthorized' });
+      if (process.env.NODE_ENV === 'production') return json(403, { error: 'billing_not_configured' });
+      const result = await store.demoPurchase(user.id, body.tier);
+      if (result.error) return json(result.status, { error: result.error });
+      return json(200, result);
     }
 
     // ── Health ────────────────────────────────────────────────

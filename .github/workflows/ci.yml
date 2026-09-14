@@ -46,10 +46,10 @@ jobs:
       - name: Engine property checks (46)
         run: npm run verify:engine
 
-      - name: API auth, ACL, sanitize, rate limits, hives (40)
+      - name: API auth, ACL, sanitize, rate limits, hives, entitlements (45)
         run: npm run verify:api
 
-      - name: Postgres store — auth, invites, money concurrency, durability, hives (15)
+      - name: Postgres store — auth, invites, money concurrency, durability, hives, entitlements (16)
         run: npm run verify:pg
         env:
           DATABASE_URL: postgres://cohive:cohive@127.0.0.1:5432/cohive_test

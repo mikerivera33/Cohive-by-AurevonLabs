@@ -16,9 +16,14 @@ import {
   REACTIONS,
   TIERS,
   TOKEN_RE,
+  REFERRAL_CODE_RE,
+  capsFor,
   cleanText,
+  entitlementFromInput,
   expenseFromInput,
+  featuresFor,
   hiveFromBody,
+  newReferralCode,
   inviteExhausted,
   listingFromInput,
   newId,
@@ -84,6 +89,8 @@ const userRow = (u) =>
     provider: u.provider,
     contact: u.contact,
     oauthVerified: u.oauth_verified,
+    referralCode: u.referral_code || null,
+    referredBy: u.referred_by || null,
     deletedAt: u.deleted_at,
     createdAt: iso(u.created_at),
   };
@@ -134,11 +141,19 @@ export async function createPgStore(seed, { url }) {
   }
   async function insertUser(c, u) {
     await c.query(
-      `INSERT INTO users (id, email, name, salt, hash, provider, contact, oauth_verified)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [u.id, u.email, u.name, u.salt ?? null, u.hash ?? null, u.provider ?? null, u.contact ?? null, Boolean(u.oauthVerified)]
+      `INSERT INTO users (id, email, name, salt, hash, provider, contact, oauth_verified, referred_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [u.id, u.email, u.name, u.salt ?? null, u.hash ?? null, u.provider ?? null, u.contact ?? null, Boolean(u.oauthVerified), u.referredBy ?? null]
     );
     return { ...u, createdAt: new Date().toISOString() };
+  }
+
+  /** The user who owns `code`, or null. */
+  async function referrerFor(code, c = db) {
+    const norm = String(code || '').trim().toUpperCase();
+    if (!REFERRAL_CODE_RE.test(norm)) return null;
+    const { rows } = await c.query('SELECT * FROM users WHERE referral_code = $1 AND deleted_at IS NULL', [norm]);
+    return userRow(rows[0]) || null;
   }
   async function createSession(userId, c = db) {
     const token = newToken();
@@ -160,13 +175,14 @@ export async function createPgStore(seed, { url }) {
     if (token && TOKEN_RE.test(token)) await db.query('DELETE FROM sessions WHERE token = $1', [token]);
   }
 
-  async function register({ email, name, password }) {
+  async function register({ email, name, password, ref }) {
     const norm = normalizeEmail(email);
     if (!norm) return err('invalid_email', 400);
     const pw = String(password || '');
     if (pw.length < 8 || pw.length > 200) return err('weak_password', 400);
     if (await userByEmail(norm)) return err('email_taken', 409);
-    const user = await insertUser(db, { id: newId(), email: norm, name: cleanText(name || norm.split('@')[0], 64) || 'You', ...hashPassword(pw) });
+    const referrer = await referrerFor(ref);
+    const user = await insertUser(db, { id: newId(), email: norm, name: cleanText(name || norm.split('@')[0], 64) || 'You', ...hashPassword(pw), referredBy: referrer?.id || null });
     return { user: publicUser(user), token: await createSession(user.id) };
   }
 
@@ -176,7 +192,7 @@ export async function createPgStore(seed, { url }) {
     return { user: publicUser(user), token: await createSession(user.id) };
   }
 
-  async function demoAuth({ provider, name, contact }) {
+  async function demoAuth({ provider, name, contact, ref }) {
     const p = String(provider || 'email');
     if (!['apple', 'google', 'email', 'phone'].includes(p)) return err('invalid_provider', 400);
     const display = cleanText(name || 'You', 64) || 'You';
@@ -186,7 +202,7 @@ export async function createPgStore(seed, { url }) {
     else if (p === 'phone' && rawContact) email = `phone-${rawContact.replace(/[^\d+]/g, '').slice(0, 20) || newId().slice(0, 8)}@cohive.local`;
     else email = `demo-${p}-${newId().slice(0, 8)}@cohive.local`;
     let user = await userByEmail(email);
-    if (!user) user = await insertUser(db, { id: newId(), email, name: display, ...hashPassword(newToken()), provider: p, contact: rawContact || null });
+    if (!user) user = await insertUser(db, { id: newId(), email, name: display, ...hashPassword(newToken()), provider: p, contact: rawContact || null, referredBy: (await referrerFor(ref))?.id || null });
     await ensureDemoMembership(user);
     return { user: publicUser(user), token: await createSession(user.id), mode: 'demo' };
   }
@@ -223,12 +239,14 @@ export async function createPgStore(seed, { url }) {
 
   /* ── magic links ──────────────────────────────────────────── */
 
-  async function requestMagicLink({ email, name }) {
+  async function requestMagicLink({ email, name, ref }) {
     const norm = normalizeEmail(email);
     if (!norm) return err('invalid_email', 400);
     const token = newToken();
     await db.query("DELETE FROM magic_links WHERE expires_at < now() - interval '1 day'");
-    await db.query('INSERT INTO magic_links (token_hash, email, name, expires_at) VALUES ($1, $2, $3, $4)', [sha256(token), norm, cleanText(name, 64) || null, new Date(Date.now() + LIMITS.MAGIC_TTL_MS)]);
+    // The referral code rides in the name column's sibling: a JSON note keeps the schema stable.
+    const note = cleanText(ref, 12).toUpperCase();
+    await db.query('INSERT INTO magic_links (token_hash, email, name, expires_at) VALUES ($1, $2, $3, $4)', [sha256(token), norm, JSON.stringify({ name: cleanText(name, 64) || null, ref: note || null }), new Date(Date.now() + LIMITS.MAGIC_TTL_MS)]);
     return { token, email: norm };
   }
 
@@ -237,11 +255,17 @@ export async function createPgStore(seed, { url }) {
     return db.tx(async (c) => {
       const { rows } = await c.query('UPDATE magic_links SET used_at = now() WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() RETURNING email, name', [sha256(token)]);
       if (!rows.length) return err('invalid_token', 400);
-      const { email, name } = rows[0];
+      const { email } = rows[0];
+      let meta = { name: null, ref: null };
+      try {
+        meta = { ...meta, ...JSON.parse(rows[0].name || '{}') };
+      } catch {
+        meta.name = rows[0].name;
+      }
       let user = await userByEmail(email, c);
       let created = false;
       if (!user) {
-        user = await insertUser(c, { id: newId(), email, name: name || email.split('@')[0], provider: 'email', oauthVerified: true });
+        user = await insertUser(c, { id: newId(), email, name: meta.name || email.split('@')[0], provider: 'email', oauthVerified: true, referredBy: (await referrerFor(meta.ref, c))?.id || null });
         created = true;
         // A real account starts with its own hive and trip, not the shared demo one.
         const hive = await insertHive(c, hiveFromBody({ name: `${user.name}’s hive` }, user.id, newId()), user);
@@ -328,7 +352,7 @@ export async function createPgStore(seed, { url }) {
     const user = await userById(userId);
     if (!user) return err('unauthorized', 401);
     const { rows } = await db.query('SELECT count(*)::int AS n FROM hives WHERE owner_id = $1', [userId]);
-    if (rows[0].n >= LIMITS.FREE_HIVE_LIMIT) return err('hive_limit', 402);
+    if (rows[0].n >= capsFor((await entitlementFor(userId)).tier).hives) return err('hive_limit', 402);
     const hive = hiveFromBody(body, userId, newId());
     await db.tx((c) => insertHive(c, hive, user));
     return { hive: await hiveSummary(hive, userId) };
@@ -386,7 +410,7 @@ export async function createPgStore(seed, { url }) {
         hiveId = rows[0]?.id;
         if (!hiveId) {
           const owned = await c.query('SELECT count(*)::int AS n FROM hives WHERE owner_id = $1', [userId]);
-          if (owned.rows[0].n >= LIMITS.FREE_HIVE_LIMIT) return err('hive_limit', 402);
+          if (owned.rows[0].n >= capsFor((await entitlementFor(userId, c)).tier).hives) return err('hive_limit', 402);
           hiveId = (await insertHive(c, hiveFromBody({ name: `${user.name}’s hive` }, userId, newId()), user)).id;
         }
       }
@@ -394,7 +418,7 @@ export async function createPgStore(seed, { url }) {
       if (denied) return denied;
       await c.query('SELECT 1 FROM hives WHERE id = $1 FOR UPDATE', [hiveId]);
       const { rows } = await c.query('SELECT count(*)::int AS n FROM trips WHERE hive_id = $1', [hiveId]);
-      if (rows[0].n >= LIMITS.FREE_TRIPS_PER_HIVE) return err('trip_limit', 402);
+      if (rows[0].n >= capsFor((await entitlementFor(userId, c)).tier).tripsPerHive) return err('trip_limit', 402);
       const t = { ...tripFromBody(body, userId, newId()), hiveId };
       await insertTripRow(c, t);
       if (opts.seedSpots) {
@@ -641,6 +665,58 @@ export async function createPgStore(seed, { url }) {
     });
   }
 
+  /* ── entitlements + referrals ─────────────────────────────── */
+
+  async function entitlementFor(userId, c = db) {
+    const { rows } = await c.query('SELECT tier, source, expires_at FROM entitlements WHERE user_id = $1', [userId]);
+    const e = rows[0];
+    if (!e) return { tier: 'Free', expiresAt: null, source: 'none' };
+    const expiresAt = e.expires_at ? iso(e.expires_at) : null;
+    if (e.expires_at && new Date(e.expires_at).getTime() < Date.now()) return { tier: 'Free', expiresAt, source: 'expired' };
+    return { tier: e.tier, expiresAt, source: e.source };
+  }
+
+  async function issueReferralCode(c, user) {
+    if (user.referralCode) return user.referralCode;
+    for (let i = 0; i < 20; i++) {
+      const code = newReferralCode(user.name);
+      const { rowCount } = await c.query('UPDATE users SET referral_code = $2 WHERE id = $1 AND referral_code IS NULL AND NOT EXISTS (SELECT 1 FROM users WHERE referral_code = $2)', [user.id, code]);
+      if (rowCount) return code;
+      const { rows } = await c.query('SELECT referral_code FROM users WHERE id = $1', [user.id]);
+      if (rows[0]?.referral_code) return rows[0].referral_code;
+    }
+    throw new Error('referral_code_exhausted');
+  }
+
+  async function meProfile(user, c = db) {
+    const fresh = (await userById(user.id, c)) || user;
+    const entitlement = await entitlementFor(user.id, c);
+    return { user: publicUser(fresh), entitlement, features: featuresFor(entitlement.tier), caps: capsFor(entitlement.tier), referralCode: fresh.referralCode || null, referredBy: fresh.referredBy || null };
+  }
+
+  async function applyEntitlement(input) {
+    const norm = entitlementFromInput(input);
+    if (norm.error) return norm;
+    const { userId, tier, expiresAt, source, eventId } = norm.entitlement;
+    return db.tx(async (c) => {
+      const user = await userById(userId, c);
+      if (!user || user.deletedAt) return err('user_not_found', 404);
+      if (eventId) {
+        const { rowCount } = await c.query('INSERT INTO billing_events (event_id) VALUES ($1) ON CONFLICT DO NOTHING', [eventId]);
+        if (!rowCount) return { ok: true, duplicate: true, ...(await meProfile(user, c)) };
+      }
+      await c.query(
+        `INSERT INTO entitlements (user_id, tier, source, expires_at, updated_at) VALUES ($1, $2, $3, $4, now())
+         ON CONFLICT (user_id) DO UPDATE SET tier = EXCLUDED.tier, source = EXCLUDED.source, expires_at = EXCLUDED.expires_at, updated_at = now()`,
+        [userId, tier, source, expiresAt]
+      );
+      if (tier !== 'Free') await issueReferralCode(c, user);
+      return { ok: true, duplicate: false, ...(await meProfile(user, c)) };
+    });
+  }
+
+  const demoPurchase = (userId, tier) => applyEntitlement({ userId, tier, source: 'demo', eventId: null });
+
   /* ── money ────────────────────────────────────────────────── */
 
   async function loadBooks(tripId, c = db) {
@@ -738,6 +814,10 @@ export async function createPgStore(seed, { url }) {
     requestMagicLink,
     consumeMagicLink,
     deleteAccount,
+    entitlementFor,
+    applyEntitlement,
+    demoPurchase,
+    meProfile,
     listHivesForUser,
     createHive,
     getHive,

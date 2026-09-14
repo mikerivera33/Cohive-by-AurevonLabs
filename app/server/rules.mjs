@@ -19,10 +19,26 @@ export const LIMITS = {
   FREE_TRIPS_PER_HIVE: 3,
   MAX_LISTINGS_PER_HIVE: 300,
   MAX_RESTAURANTS_PER_HIVE: 300,
+  PAID_HIVE_LIMIT: 20,
+  PAID_TRIPS_PER_HIVE: 20,
+  MAX_BILLING_EVENTS: 20_000,
   SESSION_TTL_MS: 30 * 24 * 60 * 60 * 1000,
   MAGIC_TTL_MS: 15 * 60 * 1000,
   INVITE_TTL_MS: 14 * 24 * 60 * 60 * 1000,
 };
+
+export const PLAN_TIERS = ['Free', 'Cohive+', 'Cohive+ Annual', 'Platinum'];
+export const isPlanTier = (v) => PLAN_TIERS.includes(v);
+/** What a tier unlocks — the server is the authority; the client only mirrors it. */
+export const featuresFor = (tier) => ({
+  connections: tier !== 'Free',
+  booking: tier === 'Cohive+ Annual' || tier === 'Platinum',
+});
+export const capsFor = (tier) =>
+  tier === 'Free'
+    ? { hives: LIMITS.FREE_HIVE_LIMIT, tripsPerHive: LIMITS.FREE_TRIPS_PER_HIVE }
+    : { hives: LIMITS.PAID_HIVE_LIMIT, tripsPerHive: LIMITS.PAID_TRIPS_PER_HIVE };
+export const REFERRAL_CODE_RE = /^[A-Z]{2,4}-[A-Z0-9]{4}10$/;
 
 export const MEMBER_COLORS = ['#60A5FA', '#F472B6', '#34D399', '#A78BFA', '#FBBF24'];
 export const REACTIONS = ['💍', '🪴'];
@@ -139,6 +155,39 @@ export function tripFromBody(body, ownerId, id) {
     lng: clampLng(body?.lng),
     expenses: [],
     ownerId,
+  };
+}
+
+/** Permanent referral code: name prefix + 4 random + the 10% marker, e.g. MIKE-K7Q210. */
+export function newReferralCode(name) {
+  const prefix = cleanText(name, 20).replace(/[^A-Za-z]/g, '').toUpperCase().slice(0, 4) || 'HIVE';
+  let body = '';
+  for (const b of randomBytes(4)) body += INVITE_ALPHABET[b % INVITE_ALPHABET.length];
+  return `${prefix.padEnd(2, 'X')}-${body}10`;
+}
+
+/**
+ * Normalise a billing event (RevenueCat / Stripe adapters translate into this
+ * shape). Returns `{ error }` or `{ userId, tier, expiresAt, source, eventId }`.
+ */
+export function entitlementFromInput(input) {
+  const userId = cleanText(input?.userId, 64);
+  if (!userId) return { error: 'invalid_user', status: 400 };
+  if (!isPlanTier(input?.tier)) return { error: 'invalid_tier', status: 400 };
+  let expiresAt = null;
+  if (input?.expiresAt != null && input.expiresAt !== '') {
+    const t = Date.parse(String(input.expiresAt));
+    if (!Number.isFinite(t)) return { error: 'invalid_expiry', status: 400 };
+    expiresAt = new Date(t).toISOString();
+  }
+  return {
+    entitlement: {
+      userId,
+      tier: input.tier,
+      expiresAt,
+      source: cleanText(input?.source || 'webhook', 40).toLowerCase(),
+      eventId: cleanText(input?.eventId, 120) || null,
+    },
   };
 }
 

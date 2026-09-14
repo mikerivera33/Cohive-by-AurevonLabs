@@ -262,6 +262,28 @@ await aok('hives: list, create, per-hive trip cap, Nest + Table CRUD on Postgres
   assert.equal((await call('GET', '/api/hives/' + made.data.hive.id, undefined, cy.token)).status, 403);
 });
 
+await aok('entitlements on Postgres: signed webhook, idempotency, caps, referral attribution', async () => {
+  const { createHmac } = await import('node:crypto');
+  process.env.COHIVE_BILLING_SECRET = 'pg-secret';
+  const signed = (body) => ({ 'X-Cohive-Signature': createHmac('sha256', 'pg-secret').update(JSON.stringify(body)).digest('hex') });
+  const evt = { userId: bo.user.id, tier: 'Platinum', source: 'revenuecat', eventId: 'rc_1' };
+  assert.equal((await call('POST', '/api/billing/webhook', evt)).status, 401);
+  const ok = await call('POST', '/api/billing/webhook', evt, undefined, signed(evt));
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data.entitlement.tier, 'Platinum');
+  assert.match(ok.data.referralCode, /^BO-[A-Z0-9]{4}10$/);
+  const dup = await call('POST', '/api/billing/webhook', evt, undefined, signed(evt));
+  assert.equal(dup.data.duplicate, true);
+  const me = await call('GET', '/api/auth/me', undefined, bo.token);
+  assert.deepEqual(me.data.caps, { hives: 20, tripsPerHive: 20 });
+  const hives = await call('GET', '/api/hives', undefined, bo.token);
+  const extra = await call('POST', '/api/hives/' + hives.data.hives[0].id + '/trips', { name: 'now allowed' }, bo.token);
+  assert.equal(extra.status, 201, 'paid tier lifts the per-hive trip cap');
+  const ref = await call('POST', '/api/auth/register', { email: 'ref@example.com', name: 'Ref', password: 'hunter2hunter2', ref: me.data.referralCode });
+  assert.equal((await call('GET', '/api/auth/me', undefined, ref.data.token)).data.referredBy, bo.user.id);
+  delete process.env.COHIVE_BILLING_SECRET;
+});
+
 await aok('a second store instance on the same database sees everything (durability)', async () => {
   const s2 = await createPgStore(seed, { url });
   const user = await s2.getSessionUser(bo.token);

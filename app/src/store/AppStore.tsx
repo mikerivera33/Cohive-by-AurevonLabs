@@ -29,6 +29,7 @@ import {
   apiAddRestaurant,
   apiAddSpot,
   apiCreateTrip,
+  apiDemoPurchase,
   apiGetHive,
   apiReact,
   apiUpdateRestaurant,
@@ -107,6 +108,8 @@ export interface ExpenseOpts {
 }
 
 const sameId = (a: MemberId, b: MemberId) => String(a) === String(b);
+const isTier = (v: unknown): v is PlanTier =>
+  v === 'Free' || v === 'Cohive+' || v === 'Cohive+ Annual' || v === 'Platinum';
 
 function prependActivity(prev: ActivityItem[], item: ActivityItem): ActivityItem[] {
   return [item, ...prev].slice(0, ACTIVITY_CAP);
@@ -334,8 +337,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [buildStage, setBuildStage] = useState(-1);
 
   /* ── subscription ─────────────────────────────────────────── */
-  const isTier = (v: unknown): v is PlanTier =>
-    v === 'Free' || v === 'Cohive+' || v === 'Cohive+ Annual' || v === 'Platinum';
   const [planTier, setPlanTier] = useState<PlanTier>(() => load<PlanTier>('planTier', 'Free', isTier));
   const [refCode, setRefCode] = useState<string>(() => load('refCode', '', isShortString));
   const [linked, setLinked] = useState<string[]>(() => load<string[]>('linked', [], isStringArray));
@@ -416,15 +417,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Trip screens still work; Nest/Table keep whatever was loaded.
       }
     }
-    if (!data.me) {
-      try {
-        const { user } = await apiMe();
-        setMeId(user.id);
-      } catch {
-        // Stay on the demo identity; money actions will simply be refused server-side.
-      }
+    try {
+      const profile = await apiMe();
+      if (!data.me) setMeId(profile.user.id);
+      applyProfile(profile);
+    } catch {
+      // Stay on the demo identity; money actions will simply be refused server-side.
     }
   }, []);
+
+  /** The server's entitlement wins over whatever the demo sheet stored locally. */
+  function applyProfile(p: { entitlement: { tier: PlanTier }; referralCode: string | null }) {
+    if (isTier(p.entitlement.tier)) setPlanTier(p.entitlement.tier);
+    if (p.referralCode) setRefCode(p.referralCode);
+  }
 
   const signInWithMagic = useCallback(
     async (email: string, name?: string): Promise<'sent' | 'signed-in' | 'offline'> => {
@@ -1162,6 +1168,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const purchase = useCallback(
     (tier: PlanTier) => {
       setPricingOpen(false);
+      if (apiLiveRef.current) {
+        void (async () => {
+          try {
+            applyProfile(await apiDemoPurchase(tier));
+            say(tier === 'Free' ? 'You’re on Free' : tier + ' active — your referral code is live (demo, nothing charged)');
+          } catch (e) {
+            const code = e instanceof ApiError ? e.code : 'network';
+            say(code === 'billing_not_configured' ? 'Billing is not switched on for this server yet' : 'Could not change your plan');
+          }
+        })();
+        return;
+      }
       if (tier === 'Free') {
         setPlanTier('Free');
         say('You’re on Free');

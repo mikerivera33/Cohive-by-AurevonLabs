@@ -18,8 +18,8 @@ npm install
 npm run dev            # http://localhost:5173
 npm run build          # tsc --noEmit + vite build
 npm run verify:engine  # 46 engine property checks (itinerary + money ledger)
-npm run verify:api     # 40 API checks on the memory store (auth, ACL, money, invites, magic links, hives, Nest, Table)
-npm run verify:pg      # 15 checks against a real Postgres (needs DATABASE_URL) — concurrency, durability, hives
+npm run verify:api     # 45 API checks on the memory store (auth, ACL, money, invites, magic links, hives, entitlements)
+npm run verify:pg      # 16 checks against a real Postgres (needs DATABASE_URL) — concurrency, durability, hives, entitlements
 npm run stress:engine  # seeded fuzz: 300 trips + 2,000 scanner inputs
 npm run smoke          # 77-check browser walkthrough (needs Playwright — see app/README.md)
 npm run e2e:payments   # 21-check payments walkthrough on an iPhone viewport (pot, tiers, booking gate, iOS tap targets)
