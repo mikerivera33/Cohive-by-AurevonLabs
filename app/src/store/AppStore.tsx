@@ -470,7 +470,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const remote = await apiHiveVersion(hiveId);
         if (before && before.hiveId === hiveId && remote.version > before.version) {
-          await hydrateFromApi(apiTripIdRef.current, { refresh: true });
+          // The poll response is itself stamped, so seenVersion already sits at
+          // `remote`. If the re-sync fails, roll the watermark back so the next
+          // tick retries instead of silently treating the change as seen.
+          try {
+            await hydrateFromApi(apiTripIdRef.current, { refresh: true });
+          } catch (e) {
+            seenVersion.current = before;
+            throw e;
+          }
           say('Your hive changed — synced');
         }
       } catch {
