@@ -133,6 +133,63 @@ export async function apiMe() {
   return apiFetch<{ user: { id: string; name: string; email: string } }>('/api/auth/me');
 }
 
+/* ── passwordless email (magic links) ─────────────────────── */
+
+export async function apiMagicRequest(email: string, name?: string) {
+  return apiFetch<{ ok: true; email: string; sent: boolean; devLink?: string }>('/api/auth/magic', {
+    method: 'POST',
+    body: JSON.stringify({ email, name }),
+  });
+}
+
+export async function apiMagicVerify(token: string) {
+  const data = await apiFetch<{
+    token: string;
+    user: { id: string; name: string; email: string };
+    created?: boolean;
+  }>('/api/auth/magic/verify', { method: 'POST', body: JSON.stringify({ token }) });
+  setApiToken(data.token);
+  return data;
+}
+
+/** Permanent: sessions revoked, profile anonymised, ledger keys kept. */
+export async function apiDeleteAccount() {
+  const data = await apiFetch<{ ok: true }>('/api/auth/me', { method: 'DELETE' });
+  clearApiToken();
+  return data;
+}
+
+/* ── invites ──────────────────────────────────────────────── */
+
+export interface InvitePreview {
+  code: string;
+  expired: boolean;
+  trip: { id: string; name: string; city: string; country: string };
+  inviter: string;
+  memberName: string | null;
+}
+
+export const isInviteCode = (v: unknown): v is string =>
+  typeof v === 'string' && /^[A-HJ-NP-Z2-9]{10}$/.test(v);
+
+export async function apiGetInvite(code: string) {
+  return apiFetch<{ invite: InvitePreview }>('/api/invites/' + encodeURIComponent(code));
+}
+
+export async function apiAcceptInvite(code: string) {
+  return apiFetch<{ trip: { id: string; name: string; city: string }; member: Member; joined: boolean }>(
+    '/api/invites/' + encodeURIComponent(code) + '/accept',
+    { method: 'POST', body: '{}' }
+  );
+}
+
+export async function apiCreateInvite(tripId: string, opts: { memberId?: MemberId; maxUses?: number } = {}) {
+  return apiFetch<{ invite: { code: string; expiresAt: string }; url: string }>(
+    '/api/trips/' + encodeURIComponent(tripId) + '/invites',
+    { method: 'POST', body: JSON.stringify(opts) }
+  );
+}
+
 export async function apiListTrips() {
   return apiFetch<{ trips: Array<{ id: string; name: string; city: string }> }>('/api/trips');
 }
@@ -143,6 +200,8 @@ export async function apiGetTrip(tripId: string) {
     spots: Spot[];
     members: Member[];
     fund?: FundEntry[];
+    /** The caller's member id in this trip — the ledger key, not necessarily the user id. */
+    me?: MemberId | null;
   }>('/api/trips/' + encodeURIComponent(tripId));
 }
 
@@ -191,7 +250,7 @@ export async function apiCastVote(tripId: string, spotId: number, tier: Tier | n
 }
 
 export async function apiAddMember(tripId: string, name: string) {
-  return apiFetch<{ member: Member }>('/api/trips/' + encodeURIComponent(tripId) + '/members', {
+  return apiFetch<{ member: Member; invite?: { code: string; expiresAt: string }; url?: string | null }>('/api/trips/' + encodeURIComponent(tripId) + '/members', {
     method: 'POST',
     body: JSON.stringify({ name }),
   });

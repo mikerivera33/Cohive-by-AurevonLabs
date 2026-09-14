@@ -426,4 +426,74 @@ console.log('\nmoney — pot + splitting');
   });
 }
 
+console.log('\nidentity + invites (memory store)');
+{
+  const s = createStore(seed);
+  const m = createApi({ store: s, scanImport });
+  const call = async (method, path, body, token) => {
+    const res = await m.handle(
+      new Request('http://x' + path, {
+        method,
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+        redirect: 'manual',
+      })
+    );
+    return { status: res.status, headers: res.headers, data: await res.json().catch(() => ({})) };
+  };
+  await aok('magic link creates an account with its own starter trip; link is single-use', async () => {
+    const req = await call('POST', '/api/auth/magic', { email: 'Eve@Example.com', name: 'Eve' });
+    assert.equal(req.status, 200);
+    const token = new URL(req.data.devLink).searchParams.get('token');
+    const ok = await call('POST', '/api/auth/magic/verify', { token });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.data.created, true);
+    assert.match(ok.headers.get('set-cookie') || '', /cohive_session=.*HttpOnly/);
+    const again = await call('POST', '/api/auth/magic/verify', { token });
+    assert.equal(again.status, 400);
+    const trips = await call('GET', '/api/trips', undefined, ok.data.token);
+    assert.equal(trips.data.trips.length, 1);
+    assert.notEqual(trips.data.trips[0].id, '1', 'not the shared demo trip');
+    const bad = await call('POST', '/api/auth/magic', { email: 'nope' });
+    assert.equal(bad.status, 400);
+  });
+  await aok('invite placeholder → accept binds the user; the member id stays the ledger key', async () => {
+    const owner = s.demoAuth({ provider: 'email', name: 'Owner' });
+    const added = await call('POST', '/api/trips/1/members', { name: 'Fay' }, owner.token);
+    assert.equal(added.status, 201);
+    const code = added.data.invite.code;
+    const slot = added.data.member.id;
+    assert.match(code, /^[A-HJ-NP-Z2-9]{10}$/);
+    const preview = await call('GET', '/api/invites/' + code);
+    assert.equal(preview.data.invite.memberName, 'Fay');
+    const fay = s.register({ email: 'fay@example.com', name: 'Fay', password: 'hunter2hunter2' });
+    const joined = await call('POST', '/api/invites/' + code + '/accept', {}, fay.token);
+    assert.equal(joined.data.joined, true);
+    assert.equal(joined.data.member.id, slot);
+    const trip = await call('GET', '/api/trips/1', undefined, fay.token);
+    assert.equal(trip.status, 200);
+    assert.equal(trip.data.me, slot);
+    const c = await call('POST', '/api/trips/1/fund/contributions', { amount: 25 }, fay.token);
+    assert.equal(c.data.fund.at(-1).memberId, slot);
+    const other = s.register({ email: 'gus@example.com', name: 'Gus', password: 'hunter2hunter2' });
+    const spent = await call('POST', '/api/invites/' + code + '/accept', {}, other.token);
+    assert.equal(spent.status, 410);
+  });
+  await aok('account deletion revokes sessions and anonymises memberships', async () => {
+    const zed = s.register({ email: 'zed@example.com', name: 'Zed', password: 'hunter2hunter2' });
+    const del = await call('DELETE', '/api/auth/me', undefined, zed.token);
+    assert.equal(del.status, 200);
+    assert.equal((await call('GET', '/api/auth/me', undefined, zed.token)).status, 401);
+    assert.equal(s.login({ email: 'zed@example.com', password: 'hunter2hunter2' }).error, 'invalid_credentials');
+  });
+  await aok('invites and magic links survive a snapshot round-trip', async () => {
+    const snap = JSON.parse(JSON.stringify(s._snapshot()));
+    const s2 = createStore(seed);
+    s2.hydrate(snap);
+    const preview = s2.getInvite([...s2._invites.keys()][0]);
+    assert.ok(!preview.error);
+    assert.ok(s2._memberships.get('1').every((mm) => mm.memberId));
+  });
+}
+
 console.log(`\nverify:api — ${passed} checks passed`);

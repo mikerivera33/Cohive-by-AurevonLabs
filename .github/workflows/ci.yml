@@ -12,6 +12,16 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cohive
+          POSTGRES_PASSWORD: cohive
+          POSTGRES_DB: cohive_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     defaults:
       run:
         working-directory: app
@@ -36,8 +46,13 @@ jobs:
       - name: Engine property checks (46)
         run: npm run verify:engine
 
-      - name: API auth, ACL, sanitize, rate limits
+      - name: API auth, ACL, sanitize, rate limits (34)
         run: npm run verify:api
+
+      - name: Postgres store — auth, invites, money concurrency, durability (14)
+        run: npm run verify:pg
+        env:
+          DATABASE_URL: postgres://cohive:cohive@127.0.0.1:5432/cohive_test
 
       - name: Engine stress + fuzz (seeded)
         run: npm run stress:engine

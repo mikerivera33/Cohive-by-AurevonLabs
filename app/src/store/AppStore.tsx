@@ -22,18 +22,24 @@ import type { LedgerSummary, Transfer } from '../engine/ledger';
 import * as seed from '../engine/seed';
 import {
   ApiError,
+  apiAcceptInvite,
   apiAddExpense,
   apiAddMember,
   apiAddSpot,
   apiCastVote,
   apiContribute,
+  apiCreateInvite,
+  apiDeleteAccount,
   apiDemoAuth,
   apiGetTrip,
   apiHealthy,
   apiListTrips,
+  apiMagicRequest,
+  apiMagicVerify,
   apiMe,
   apiScan,
   apiWithdraw,
+  isInviteCode,
   getApiToken,
   setApiToken,
 } from '../lib/api';
@@ -119,6 +125,18 @@ interface AppStore {
   ) => Promise<void>;
   /** Accept an OAuth redirect token from the URL (if present) and hydrate. */
   acceptAuthToken: (token: string) => Promise<void>;
+  /**
+   * Passwordless email. 'sent' = check your inbox; 'signed-in' = the API handed
+   * back a dev link and the session is open; 'offline' = no API, use the demo path.
+   */
+  signInWithMagic: (email: string, name?: string) => Promise<'sent' | 'signed-in' | 'offline'>;
+  /** Permanently delete the signed-in account (App Store + GDPR requirement). */
+  deleteAccount: () => Promise<void>;
+  /** Invite code captured from a `?invite=` link, waiting for a live session. */
+  pendingInvite: string;
+  joinInvite: (code: string) => Promise<void>;
+  /** Fetch (and cache) the share link for a placeholder member. */
+  inviteLinkFor: (memberId?: MemberId) => Promise<string | null>;
   /** True when votes/members/scan go through server-enforced ACL. */
   apiLive: boolean;
 
@@ -243,6 +261,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<Member[]>(() => seed.members.map((m) => ({ ...m })));
   const [fund, setFund] = useState<FundEntry[]>(() => seed.fund.map((f) => ({ ...f })));
   const [meId, setMeId] = useState<MemberId>(seed.members[0].id);
+  const [inviteLinks, setInviteLinks] = useState<Record<string, string>>({});
+  // `?invite=CODE` survives onboarding and OAuth redirects via validated storage.
+  const [pendingInvite, setPendingInvite] = useState<string>(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('invite');
+    return isInviteCode(fromUrl) ? fromUrl : load('pendingInvite', '', isInviteCode);
+  });
+  useEffect(() => save('pendingInvite', pendingInvite), [pendingInvite]);
   const [activity, setActivity] = useState<ActivityItem[]>(() => seed.activity.slice());
   const [nest, setNest] = useState<Listing[]>(cloneNest);
   const [table] = useState<Restaurant[]>(() => seed.table.map((t) => ({ ...t })));
@@ -335,6 +360,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMembers(data.members.map((m) => ({ id: m.id, name: m.name, color: m.color })));
     setFund((data.fund || []).map((f) => ({ ...f })));
     if (data.trip.expenses) setExpenses(data.trip.expenses.map((e) => ({ ...e })));
+    setInviteLinks({});
+    if (data.me) {
+      setMeId(data.me);
+      return;
+    }
     try {
       const { user } = await apiMe();
       setMeId(user.id);
@@ -342,6 +372,85 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Stay on the demo identity; money actions will simply be refused server-side.
     }
   }, []);
+
+  const signInWithMagic = useCallback(
+    async (email: string, name?: string): Promise<'sent' | 'signed-in' | 'offline'> => {
+      if (!(await apiHealthy())) return 'offline';
+      try {
+        const r = await apiMagicRequest(email, name);
+        if (!r.devLink) return 'sent';
+        // No mail provider on this host: the API hands the link straight back.
+        const token = new URL(r.devLink).searchParams.get('token') || '';
+        await apiMagicVerify(token);
+        const { trips } = await apiListTrips();
+        if (trips[0]) await hydrateFromApi(trips[0].id);
+        return 'signed-in';
+      } catch (e) {
+        const code = e instanceof ApiError ? e.code : 'auth_failed';
+        say(code === 'mail_not_configured' ? 'Email sign-in is not set up on this server yet' : 'Sign-in failed (' + code + ')');
+        return 'offline';
+      }
+    },
+    [hydrateFromApi, say]
+  );
+
+  const joinInvite = useCallback(
+    async (code: string) => {
+      if (!isInviteCode(code)) return;
+      try {
+        const r = await apiAcceptInvite(code);
+        await hydrateFromApi(r.trip.id);
+        setPendingInvite('');
+        say(r.joined ? 'You joined ' + r.trip.name + ' 🐝' : 'You’re already in ' + r.trip.name);
+      } catch (e) {
+        const code2 = e instanceof ApiError ? e.code : 'network';
+        if (code2 === 'invite_expired' || code2 === 'invite_used') say('That invite link has already been used');
+        else if (code2 === 'invite_not_found') say('Invite not found');
+        else if (code2 === 'unauthorized') return; // keep it pending until sign-in completes
+        else say('Could not join (' + code2 + ')');
+        if (code2 !== 'unauthorized' && code2 !== 'network') setPendingInvite('');
+      }
+    },
+    [hydrateFromApi, say]
+  );
+
+  // Once a real session exists, redeem the pending invite.
+  useEffect(() => {
+    if (apiLive && pendingInvite) void joinInvite(pendingInvite);
+  }, [apiLive, pendingInvite, joinInvite]);
+
+  const inviteLinkFor = useCallback(
+    async (memberId?: MemberId) => {
+      const tripId = apiTripIdRef.current;
+      if (!apiLiveRef.current || !tripId) {
+        say('Invite links need a signed-in hive — email sign-in opens one');
+        return null;
+      }
+      const key = memberId === undefined ? '*' : String(memberId);
+      if (inviteLinks[key]) return inviteLinks[key];
+      try {
+        const { url } = await apiCreateInvite(tripId, memberId === undefined ? {} : { memberId });
+        setInviteLinks((prev) => ({ ...prev, [key]: url }));
+        return url;
+      } catch (e) {
+        say(e instanceof ApiError && e.code === 'already_joined' ? 'They already joined' : 'Could not create invite link');
+        return null;
+      }
+    },
+    [inviteLinks, say]
+  );
+
+  const deleteAccount = useCallback(async () => {
+    try {
+      await apiDeleteAccount();
+    } catch {
+      say('Could not delete the account — try again');
+      return;
+    }
+    // Everything about this person is gone server-side; start the app clean.
+    save('pendingInvite', '');
+    window.location.assign(window.location.pathname + '?start=onboarding');
+  }, [say]);
 
   // Resume a prior session when the API is up; otherwise stay on seed fixtures.
   useEffect(() => {
@@ -727,15 +836,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (apiLiveRef.current && tripId) {
         void (async () => {
           try {
-            const { member } = await apiAddMember(tripId, name);
+            const { member, url } = await apiAddMember(tripId, name);
             setMembers((prev) => [
               ...prev,
               {
-                id: member.id, // server user id — must match the ledger keys
+                id: member.id, // server member id — must match the ledger keys
                 name: member.name,
                 color: member.color,
               },
             ]);
+            if (url) setInviteLinks((prev) => ({ ...prev, [String(member.id)]: url }));
             setActivity((prev) =>
               prependActivity(prev, {
                 who: 'You',
@@ -862,6 +972,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       replayOnboarding,
       authenticate,
       acceptAuthToken,
+      signInWithMagic,
+      deleteAccount,
+      pendingInvite,
+      joinInvite,
+      inviteLinkFor,
       apiLive,
       tab,
       setTab,
@@ -924,6 +1039,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }),
     [
       light, onboarded, finishOnboarding, replayOnboarding, authenticate, acceptAuthToken, apiLive, tab, tripView,
+      signInWithMagic, deleteAccount, pendingInvite, joinInvite, inviteLinkFor,
       tripMeta, spots, expenses, members, fund, ledger, meId, activity, nest, table, addedIds,
       setTier, addSpotFromScan, addExpense, contribute, withdraw, settle, addMember, toggleReaction,
       scanText, scanning, scanResult, scan,

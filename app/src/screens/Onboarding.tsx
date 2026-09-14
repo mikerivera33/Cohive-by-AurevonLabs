@@ -130,7 +130,7 @@ function AppleMark() {
 }
 
 export function Onboarding() {
-  const { finishOnboarding, authenticate, acceptAuthToken } = useApp();
+  const { finishOnboarding, authenticate, acceptAuthToken, signInWithMagic } = useApp();
   const [step, setStep] = useState<Step>('gateway');
   const [slide, setSlide] = useState(0);
   const [hiveName, setHiveName] = useState('');
@@ -148,7 +148,8 @@ export function Onboarding() {
     apple: false,
     mode: 'demo',
   });
-  const [authModeNote, setAuthModeNote] = useState<'demo' | 'oauth' | 'oauth_provisional'>('demo');
+  const [authModeNote, setAuthModeNote] = useState<'demo' | 'oauth' | 'oauth_provisional' | 'magic'>('demo');
+  const [magicSent, setMagicSent] = useState('');
 
   const sl = SLIDES[slide] || SLIDES[0];
 
@@ -174,7 +175,7 @@ export function Onboarding() {
     (async () => {
       if (token) await acceptAuthToken(token);
       if (cancelled) return;
-      if (mode === 'oauth' || mode === 'oauth_provisional') {
+      if (mode === 'oauth' || mode === 'oauth_provisional' || mode === 'magic') {
         setAuthModeNote(mode);
       } else if (providers.mode === 'oauth') {
         setAuthModeNote('oauth');
@@ -228,6 +229,25 @@ export function Onboarding() {
       return;
     }
     setContactError('');
+    if (asEmail) {
+      // Real path: a one-tap email link. Falls through to the demo session only when no API is up.
+      if (authBusy) return;
+      setAuthBusy(true);
+      try {
+        const outcome = await signInWithMagic(raw);
+        if (outcome === 'sent') {
+          setMagicSent(raw);
+          return;
+        }
+        if (outcome === 'signed-in') {
+          setAuthModeNote('magic');
+          setStep('intro');
+          return;
+        }
+      } finally {
+        setAuthBusy(false);
+      }
+    }
     await continueDemo(asEmail ? 'email' : 'phone', { contact: raw });
   };
 
@@ -394,7 +414,7 @@ export function Onboarding() {
             reach you?
           </h1>
           <p style={{ color: 'var(--soft)', fontSize: 14.5, lineHeight: 1.55, margin: '0 0 22px' }}>
-            We’ll use this to open your hive. No password needed for the demo path.
+            We’ll email you a one-tap sign-in link — no password. Phone continues as a demo session.
           </p>
           <label className="sr-only" htmlFor="gw-contact">
             Email or phone number
@@ -416,6 +436,12 @@ export function Onboarding() {
           {contactError ? (
             <p id="gw-contact-error" role="alert" style={{ color: '#F87171', fontSize: 12.5, margin: '10px 0 0' }}>
               {contactError}
+            </p>
+          ) : null}
+          {magicSent ? (
+            <p role="status" style={{ color: 'var(--soft)', fontSize: 13, lineHeight: 1.5, margin: '12px 0 0' }}>
+              Check your inbox — we sent a sign-in link to <b style={{ color: 'var(--ink)' }}>{magicSent}</b>. Open it on
+              this device and you’ll land back here, signed in.
             </p>
           ) : null}
           <button
@@ -469,7 +495,9 @@ export function Onboarding() {
             >
               {authModeNote === 'oauth_provisional'
                 ? 'Signed in via OAuth return (provisional session).'
-                : 'Signed in with a demo session — welcome.'}
+                : authModeNote === 'magic'
+                  ? 'Signed in with your email link — welcome.'
+                  : 'Signed in with a demo session — welcome.'}
             </p>
           )}
 

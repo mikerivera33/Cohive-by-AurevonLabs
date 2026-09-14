@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { createApi } from './server/api.mjs';
 import { seed } from './server/seed.mjs';
 import { createStoreAsync } from './server/store.mjs';
+import { createPgStore } from './server/store-pg.mjs';
 import { defaultPersistPath } from './server/persist.mjs';
 
 const DIST = join(fileURLToPath(new URL('.', import.meta.url)), 'dist');
@@ -40,7 +41,11 @@ const SECURITY_HEADERS = {
 };
 
 const persistPath = defaultPersistPath();
-const store = await createStoreAsync(seed, { persistPath });
+// DATABASE_URL → Postgres (durable, multi-instance safe); otherwise the file-backed dev store.
+const store = process.env.DATABASE_URL
+  ? await createPgStore(seed, { url: process.env.DATABASE_URL })
+  : await createStoreAsync(seed, { persistPath });
+console.log(`[cohive] store backend: ${store.backend}`);
 const api = createApi({ store });
 
 const server = createServer(async (req, res) => {

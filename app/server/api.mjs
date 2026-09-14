@@ -12,6 +12,7 @@ import { takeToken } from './rateLimit.mjs';
 import { MAX_JSON_BODY_BYTES, parseJsonBody } from './safeJson.mjs';
 import { scanImport as defaultScanImport } from './engine-bundle.mjs';
 import { authorizeUrl, exchangeCode, oauthConfig, providersPayload } from './oauth.mjs';
+import { mailConfigured, sendMagicLink } from './mail.mjs';
 
 const SCAN_LIMIT_USER = { limit: 30, windowMs: 60_000 };
 const SCAN_LIMIT_IP = { limit: 60, windowMs: 60_000 };
@@ -22,8 +23,27 @@ const CORS_ORIGIN = process.env.COHIVE_CORS_ORIGIN || '*';
 const CORS = {
   'Access-Control-Allow-Origin': CORS_ORIGIN,
   'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  // Cookies only ride along when the origin is pinned — never with '*'.
+  ...(CORS_ORIGIN !== '*' ? { 'Access-Control-Allow-Credentials': 'true' } : {}),
 };
+
+const SESSION_COOKIE = 'cohive_session';
+const COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
+
+/** HttpOnly session cookie for the web app; native clients keep using Bearer. */
+function sessionCookie(token) {
+  const secure = /^https:/.test(oauthConfig().publicBase) ? '; Secure' : '';
+  return token
+    ? `${SESSION_COOKIE}=${token}; Path=/api; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; SameSite=Lax${secure}`
+    : `${SESSION_COOKIE}=; Path=/api; Max-Age=0; HttpOnly; SameSite=Lax${secure}`;
+}
+
+function cookieToken(reqHeaders) {
+  const raw = String(reqHeaders.get?.('cookie') || reqHeaders.cookie || '');
+  const m = raw.match(new RegExp('(?:^|;\\s*)' + SESSION_COOKIE + '=([a-f0-9]{48})'));
+  return m ? m[1] : '';
+}
 
 function json(status, body, extraHeaders = {}) {
   return {
@@ -55,6 +75,11 @@ function bearer(reqHeaders) {
   const h = reqHeaders.get?.('authorization') || reqHeaders.authorization || '';
   const m = String(h).match(/^Bearer\s+(.+)$/i);
   return m ? m[1].trim() : '';
+}
+
+/** Where an invite lands: the web app, which stores the code and accepts it after sign-in. */
+function inviteUrl(code) {
+  return code ? `${oauthConfig().publicBase}/?invite=${encodeURIComponent(code)}` : null;
 }
 
 function clientIp(reqHeaders, fallback = '0.0.0.0') {
@@ -92,8 +117,8 @@ export function createApi(deps = {}) {
       }
     }
 
-    const token = bearer(headers);
-    const user = store.getSessionUser(token);
+    const token = bearer(headers) || cookieToken(headers);
+    const user = await store.getSessionUser(token);
 
     function rateLimitAuth() {
       const lim = takeToken(`auth:ip:${ip}`, AUTH_LIMIT_IP);
@@ -111,23 +136,60 @@ export function createApi(deps = {}) {
     if (method === 'POST' && path === '/api/auth/register') {
       const limited = rateLimitAuth();
       if (limited) return limited;
-      const result = store.register(body);
+      const result = await store.register(body);
       if (result.error) return json(result.status, { error: result.error });
-      return json(201, result);
+      return json(201, result, { 'Set-Cookie': sessionCookie(result.token) });
     }
     if (method === 'POST' && path === '/api/auth/login') {
       const limited = rateLimitAuth();
       if (limited) return limited;
-      const result = store.login(body);
+      const result = await store.login(body);
       if (result.error) return json(result.status, { error: result.error });
-      return json(200, result);
+      return json(200, result, { 'Set-Cookie': sessionCookie(result.token) });
     }
     if (method === 'POST' && path === '/api/auth/demo') {
       const limited = rateLimitAuth();
       if (limited) return limited;
-      const result = store.demoAuth(body);
+      const result = await store.demoAuth(body);
       if (result.error) return json(result.status, { error: result.error });
-      return json(201, result);
+      return json(201, result, { 'Set-Cookie': sessionCookie(result.token) });
+    }
+
+    // ── Magic links (passwordless email) ──────────────────────
+    if (method === 'POST' && path === '/api/auth/magic') {
+      const limited = rateLimitAuth();
+      if (limited) return limited;
+      const result = await store.requestMagicLink(body);
+      if (result.error) return json(result.status, { error: result.error });
+      const link = `${oauthConfig().publicBase}/api/auth/magic/verify?token=${result.token}`;
+      if (mailConfigured()) {
+        try {
+          await sendMagicLink({ to: result.email, link });
+        } catch {
+          return json(502, { error: 'mail_failed' });
+        }
+        return json(200, { ok: true, email: result.email, sent: true });
+      }
+      if (process.env.NODE_ENV === 'production') return json(503, { error: 'mail_not_configured' });
+      // Local / preview: hand the link back so the flow stays testable end to end.
+      return json(200, { ok: true, email: result.email, sent: false, devLink: link });
+    }
+    if (method === 'GET' && path === '/api/auth/magic/verify') {
+      const limited = rateLimitAuth();
+      if (limited) return limited;
+      const base = oauthConfig().publicBase;
+      const result = await store.consumeMagicLink(String(query.get('token') || ''));
+      if (result.error) return redirect(`${base}/?start=onboarding&auth_error=${encodeURIComponent(result.error)}`);
+      return redirect(`${base}/?start=onboarding&authed=1&token=${encodeURIComponent(result.token)}&mode=magic`, {
+        'Set-Cookie': sessionCookie(result.token),
+      });
+    }
+    if (method === 'POST' && path === '/api/auth/magic/verify') {
+      const limited = rateLimitAuth();
+      if (limited) return limited;
+      const result = await store.consumeMagicLink(String(body.token || ''));
+      if (result.error) return json(result.status, { error: result.error });
+      return json(200, result, { 'Set-Cookie': sessionCookie(result.token) });
     }
     if (method === 'GET' && path === '/api/auth/providers') {
       return json(200, providersPayload());
@@ -158,19 +220,33 @@ export function createApi(deps = {}) {
       const appHome = `${cfg.publicBase}/?start=onboarding&authed=1`;
       const profile = await exchangeCode(provider, code);
       const result = profile
-        ? store.oauthUpsert(profile)
-        : store.oauthUpsert({
+        ? await store.oauthUpsert(profile)
+        : await store.oauthUpsert({
             provider,
             email: '',
             name: 'You',
             verified: false,
           });
       const dest = `${appHome}&token=${encodeURIComponent(result.token)}&mode=${encodeURIComponent(result.mode)}`;
-      return redirect(dest);
+      return redirect(dest, { 'Set-Cookie': sessionCookie(result.token) });
     }
     if (method === 'POST' && path === '/api/auth/logout') {
-      store.logout(token);
-      return json(200, { ok: true });
+      await store.logout(token);
+      return json(200, { ok: true }, { 'Set-Cookie': sessionCookie('') });
+    }
+    if (method === 'DELETE' && path === '/api/auth/me') {
+      if (!user) return json(401, { error: 'unauthorized' });
+      const result = await store.deleteAccount(user.id);
+      if (result.error) return json(result.status, { error: result.error });
+      return json(200, { ok: true }, { 'Set-Cookie': sessionCookie('') });
+    }
+
+    // Invite preview is public: it renders "Maya invited you to Tokyo" before sign-in.
+    const invitePreview = path.match(/^\/api\/invites\/([^/]+)$/);
+    if (method === 'GET' && invitePreview) {
+      const result = await store.getInvite(decodeURIComponent(invitePreview[1]));
+      if (result.error) return json(result.status, { error: result.error });
+      return json(200, result);
     }
     if (method === 'GET' && path === '/api/auth/me') {
       if (!user) return json(401, { error: 'unauthorized' });
@@ -189,13 +265,20 @@ export function createApi(deps = {}) {
     }
 
     if (method === 'GET' && path === '/api/trips') {
-      return json(200, { trips: store.listTripsForUser(user.id) });
+      return json(200, { trips: await store.listTripsForUser(user.id) });
     }
 
     if (method === 'POST' && path === '/api/trips') {
-      const result = store.createTrip(user.id, body);
+      const result = await store.createTrip(user.id, body);
       if (result.error) return json(result.status, { error: result.error });
       return json(201, result);
+    }
+
+    const inviteAccept = path.match(/^\/api\/invites\/([^/]+)\/accept$/);
+    if (method === 'POST' && inviteAccept) {
+      const result = await store.acceptInvite(decodeURIComponent(inviteAccept[1]), user.id);
+      if (result.error) return json(result.status, { error: result.error });
+      return json(200, result);
     }
 
     const tripMatch = path.match(/^\/api\/trips\/([^/]+)(.*)$/);
@@ -204,44 +287,50 @@ export function createApi(deps = {}) {
       const rest = tripMatch[2] || '';
 
       if (method === 'GET' && rest === '') {
-        const result = store.getTrip(tripId, user.id);
+        const result = await store.getTrip(tripId, user.id);
         if (result.error) return json(result.status, { error: result.error });
         return json(200, result);
       }
 
       if (method === 'POST' && rest === '/votes') {
-        const result = store.castVote(tripId, user.id, body.spotId, body.tier ?? null);
+        const result = await store.castVote(tripId, user.id, body.spotId, body.tier ?? null);
         if (result.error) return json(result.status, { error: result.error });
         return json(200, result);
       }
 
       if (method === 'GET' && rest === '/members') {
-        const result = store.getTrip(tripId, user.id);
+        const result = await store.getTrip(tripId, user.id);
         if (result.error) return json(result.status, { error: result.error });
         return json(200, { members: result.members });
       }
 
       if (method === 'POST' && rest === '/members') {
-        const result = store.addMember(tripId, user.id, body.name);
+        const result = await store.addMember(tripId, user.id, body.name);
         if (result.error) return json(result.status, { error: result.error });
-        return json(201, result);
+        return json(201, { ...result, url: inviteUrl(result.invite?.code) });
+      }
+
+      if (method === 'POST' && rest === '/invites') {
+        const result = await store.createInvite(tripId, user.id, body);
+        if (result.error) return json(result.status, { error: result.error });
+        return json(201, { ...result, url: inviteUrl(result.invite.code) });
       }
 
       // Money — the store only ever moves the session user's own funds.
       if (method === 'GET' && rest === '/fund') {
-        const result = store.getFund(tripId, user.id);
+        const result = await store.getFund(tripId, user.id);
         if (result.error) return json(result.status, { error: result.error });
         return json(200, result);
       }
 
       if (method === 'POST' && rest === '/fund/contributions') {
-        const result = store.contribute(tripId, user.id, body.amount);
+        const result = await store.contribute(tripId, user.id, body.amount);
         if (result.error) return json(result.status, { error: result.error });
         return json(201, result);
       }
 
       if (method === 'POST' && rest === '/fund/withdrawals') {
-        const result = store.withdraw(tripId, user.id, body.amount);
+        const result = await store.withdraw(tripId, user.id, body.amount);
         if (result.error) {
           return json(result.status, { error: result.error, withdrawable: result.withdrawable });
         }
@@ -249,7 +338,7 @@ export function createApi(deps = {}) {
       }
 
       if (method === 'POST' && rest === '/expenses') {
-        const result = store.addExpense(tripId, user.id, body);
+        const result = await store.addExpense(tripId, user.id, body);
         if (result.error) {
           return json(result.status, { error: result.error, shortfalls: result.shortfalls });
         }
@@ -257,13 +346,13 @@ export function createApi(deps = {}) {
       }
 
       if (method === 'POST' && rest === '/spots') {
-        const result = store.addSpot(tripId, user.id, body.candidate, body.source);
+        const result = await store.addSpot(tripId, user.id, body.candidate, body.source);
         if (result.error) return json(result.status, { error: result.error });
         return json(201, result);
       }
 
       if (method === 'POST' && rest === '/scan') {
-        const denied = store.requireMember(tripId, user.id);
+        const denied = await store.requireMember(tripId, user.id);
         if (denied) return json(denied.status, { error: denied.error });
 
         const userKey = `scan:user:${user.id}`;
@@ -288,7 +377,7 @@ export function createApi(deps = {}) {
         const cleaned = sanitizeImportText(body.text);
         if (!cleaned) return json(400, { error: 'empty_text' });
 
-        const tripBundle = store.getTrip(tripId, user.id);
+        const tripBundle = await store.getTrip(tripId, user.id);
         if (tripBundle.error) return json(tripBundle.status, { error: tripBundle.error });
         const trip = tripBundle.trip;
 
