@@ -273,6 +273,14 @@ console.log('\nledger — pot + envelopes + splitting');
     assert.equal(l.transfers.length, 1);
   });
 
+  ok('a voided expense counts for nothing — envelopes and balances recover', () => {
+    const potBill: LedgerExpense = { id: 9, amount: 300, paidBy: 'pot', splitWith: [1, 2] };
+    assert.equal(summarizeLedger(ids, [potBill], fund, 1).pot, 50);
+    assert.equal(summarizeLedger(ids, [{ ...potBill, voidedAt: '2026-09-14T00:00:00Z' }], fund, 1).pot, 350);
+    const iou: LedgerExpense = { id: 10, amount: 90, paidBy: 1 };
+    assert.equal(summarizeLedger(ids, [{ ...iou, voidedAt: 'x' }], [], 1).transfers.length, 0);
+  });
+
   ok('unknown members and empty books are harmless', () => {
     const l = summarizeLedger(ids, [{ id: 1, amount: 50, paidBy: 99, splitWith: [98] }], [{ id: 1, memberId: 42, kind: 'contribution', amount: 5, at: '' }], 1);
     assert.equal(l.pot, 0);

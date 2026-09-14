@@ -235,6 +235,12 @@ await check('budget tab: split ledger shows who owes whom', async () => {
   await has('551.67');
   await has('You paid · 3 ways');
 });
+await check('budget tab: transfers to a member with a payout handle get a one-tap pay link', async () => {
+  const link = page.getByRole('link', { name: /Pay You \$551\.67 via Venmo/ });
+  if ((await link.count()) === 0) throw new Error('Venmo pay link missing');
+  const href = await link.first().getAttribute('href');
+  if (!href.startsWith('https://account.venmo.com/pay?') || !href.includes('amount=551.67')) throw new Error('bad pay link ' + href);
+});
 await check('budget tab: pot shows envelopes and takes a contribution', async () => {
   await has('Group pot');
   await has('yours: $200');
@@ -273,6 +279,14 @@ await check('budget tab: pot pays a covered bill and charges the envelopes', asy
   await has('Expense logged');
   await has('Pot paid · 2 ways');
   await has('yours: $50');
+});
+await check('budget tab: voiding a pot bill strikes the row and refunds the envelopes', async () => {
+  await page.getByRole('button', { name: 'Void group dinner', exact: true }).click();
+  await page.waitForTimeout(300);
+  await has('Voided');
+  await has('· voided');
+  await has('yours: $200');
+  if (await page.getByRole('button', { name: 'Void group dinner', exact: true }).count()) throw new Error('void button should disappear');
 });
 await check('budget tab: marking a transfer paid settles it', async () => {
   await page.getByRole('button', { name: /Mark Maya paid You/ }).click();
@@ -390,6 +404,16 @@ await check('you tab: plan badge and referral code appear', async () => {
   await has('Your referral code');
   const code = await page.getByText(/^MIKE-[A-Z0-9]{4}10$/).count();
   if (code === 0) throw new Error('referral code not in MIKE-XXXX10 form');
+});
+await check('you tab: payout handle validates and saves', async () => {
+  await page.getByLabel('Payout handle').fill('zelle:mike');
+  await tap('Save');
+  await page.waitForTimeout(300);
+  await has('Use venmo:@name');
+  await page.getByLabel('Payout handle').fill('cashapp:$mike');
+  await tap('Save');
+  await page.waitForTimeout(300);
+  await has('Payout handle saved');
 });
 await check('you tab: all 21 accounts are listed', async () => {
   const names = ['Airbnb', 'Hotels.com', 'Expedia', 'Priceline', 'Uber', 'Resy',

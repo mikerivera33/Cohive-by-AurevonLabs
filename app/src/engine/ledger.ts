@@ -33,6 +33,8 @@ export interface LedgerExpense {
   paidBy?: Payer;
   /** Defaults to everyone. */
   splitWith?: MemberId[];
+  /** Set when the row was voided — it then counts for nothing. */
+  voidedAt?: string | null;
 }
 
 export type FundKind = 'contribution' | 'withdrawal';
@@ -202,6 +204,7 @@ export function summarizeLedger(
   }
 
   for (const e of expenses) {
+    if (e.voidedAt) continue;
     const payer: Payer = e.paidBy ?? defaultPayer;
     const shares = sharesFor(e, members);
     if (payer === 'pot') {

@@ -24,6 +24,7 @@ import {
   featuresFor,
   hiveFromBody,
   newReferralCode,
+  normalizePayHandle,
   inviteExhausted,
   listingFromInput,
   newId,
@@ -68,7 +69,7 @@ const tripRow = (r) => ({
   ownerId: r.owner_id,
 });
 const tripSummary = (r) => ({ id: r.id, name: r.name, city: r.city, country: r.country, startDate: r.start_date, days: r.days, hiveId: r.hive_id });
-const memberRow = (m) => ({ id: m.member_id, name: m.name, color: m.color, role: m.role });
+const memberRow = (m) => ({ id: m.member_id, name: m.name, color: m.color, role: m.role, payHandle: m.pay_handle || null });
 const expenseRow = (e) => ({
   id: Number(e.id),
   label: e.label,
@@ -76,6 +77,8 @@ const expenseRow = (e) => ({
   amount: Number(e.amount),
   paidBy: e.paid_by ?? undefined,
   splitWith: Array.isArray(e.split_with) ? e.split_with : undefined,
+  voidedAt: e.voided_at ? iso(e.voided_at) : null,
+  voidedBy: e.voided_by || undefined,
 });
 const fundRow = (f) => ({ id: Number(f.id), memberId: f.member_id, kind: f.kind, amount: Number(f.amount), at: iso(f.at) });
 const itemRow = (r) => ({ ...r.data, id: Number(r.id) });
@@ -91,6 +94,7 @@ const userRow = (u) =>
     oauthVerified: u.oauth_verified,
     referralCode: u.referral_code || null,
     referredBy: u.referred_by || null,
+    payHandle: u.pay_handle || null,
     deletedAt: u.deleted_at,
     createdAt: iso(u.created_at),
   };
@@ -301,7 +305,11 @@ export async function createPgStore(seed, { url }) {
   /* ── hives + membership ───────────────────────────────────── */
 
   async function membersOf(hiveId, c = db) {
-    const { rows } = await c.query('SELECT * FROM hive_members WHERE hive_id = $1 ORDER BY joined_at, member_id', [String(hiveId)]);
+    const { rows } = await c.query(
+      `SELECT m.*, u.pay_handle FROM hive_members m LEFT JOIN users u ON u.id = m.user_id
+       WHERE m.hive_id = $1 ORDER BY m.joined_at, m.member_id`,
+      [String(hiveId)]
+    );
     return rows;
   }
   async function membershipFor(hiveId, userId, c = db) {
@@ -691,7 +699,30 @@ export async function createPgStore(seed, { url }) {
   async function meProfile(user, c = db) {
     const fresh = (await userById(user.id, c)) || user;
     const entitlement = await entitlementFor(user.id, c);
-    return { user: publicUser(fresh), entitlement, features: featuresFor(entitlement.tier), caps: capsFor(entitlement.tier), referralCode: fresh.referralCode || null, referredBy: fresh.referredBy || null };
+    return { user: publicUser(fresh), entitlement, features: featuresFor(entitlement.tier), caps: capsFor(entitlement.tier), referralCode: fresh.referralCode || null, referredBy: fresh.referredBy || null, payHandle: fresh.payHandle || null };
+  }
+
+  async function updateProfile(userId, patch) {
+    const user = await userById(userId);
+    if (!user || user.deletedAt) return err('not_found', 404);
+    let name;
+    if (patch?.name !== undefined) {
+      name = cleanText(patch.name, 64);
+      if (!name) return err('invalid_name', 400);
+    }
+    let handle;
+    if (patch?.payHandle !== undefined) {
+      handle = normalizePayHandle(patch.payHandle);
+      if (handle === null) return err('invalid_pay_handle', 400);
+    }
+    await db.tx(async (c) => {
+      if (name !== undefined) {
+        await c.query('UPDATE users SET name = $2 WHERE id = $1', [userId, name]);
+        await c.query('UPDATE hive_members SET name = $2 WHERE user_id = $1', [userId, name]);
+      }
+      if (handle !== undefined) await c.query('UPDATE users SET pay_handle = $2 WHERE id = $1', [userId, handle || null]);
+    });
+    return meProfile(user);
   }
 
   async function applyEntitlement(input) {
@@ -784,6 +815,16 @@ export async function createPgStore(seed, { url }) {
     });
   }
 
+  async function voidExpense(tripId, userId, expenseId) {
+    return moneyTx(tripId, userId, async (c, books, me) => {
+      const { rows } = await c.query('SELECT * FROM expenses WHERE trip_id = $1 AND id = $2 FOR UPDATE', [String(tripId), Number(expenseId)]);
+      if (!rows.length) return err('expense_not_found', 404);
+      if (rows[0].voided_at) return err('already_voided', 409);
+      const upd = await c.query('UPDATE expenses SET voided_at = now(), voided_by = $3 WHERE trip_id = $1 AND id = $2 RETURNING *', [String(tripId), Number(expenseId), me]);
+      return { expense: expenseRow(upd.rows[0]) };
+    });
+  }
+
   async function addExpense(tripId, userId, input) {
     return moneyTx(tripId, userId, async (c, books, me) => {
       if (books.rawExpenses.length >= LIMITS.MAX_EXPENSES_PER_TRIP) return err('expense_limit', 400);
@@ -839,6 +880,8 @@ export async function createPgStore(seed, { url }) {
     contribute,
     withdraw,
     addExpense,
+    voidExpense,
+    updateProfile,
     isMember,
     requireMember,
     requireHiveMember,

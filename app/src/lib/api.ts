@@ -154,6 +154,18 @@ export interface MeProfile {
   caps: { hives: number; tripsPerHive: number };
   referralCode: string | null;
   referredBy: string | null;
+  payHandle: string | null;
+}
+
+export async function apiUpdateProfile(patch: { name?: string; payHandle?: string }) {
+  return apiFetch<MeProfile>('/api/auth/me/profile', { method: 'POST', body: JSON.stringify(patch) });
+}
+
+export async function apiVoidExpense(tripId: string, expenseId: number) {
+  return apiFetch<FundPayload & { expense: Expense }>(fundPath(tripId, '/expenses/' + expenseId + '/void'), {
+    method: 'POST',
+    body: '{}',
+  });
 }
 
 export async function apiMe() {

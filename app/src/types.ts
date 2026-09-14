@@ -47,6 +47,8 @@ export interface Expense {
   paidBy?: Payer;
   /** Members sharing the cost. Legacy rows default to everyone. */
   splitWith?: MemberId[];
+  /** Voided rows stay for the audit trail and count for nothing. */
+  voidedAt?: string | null;
 }
 
 export interface TripSummary {
@@ -90,6 +92,8 @@ export interface Member {
   id: MemberId;
   name: string;
   color: string;
+  /** venmo:@name, cashapp:$tag or paypal:name — powers settle-up hand-off links. */
+  payHandle?: string | null;
 }
 
 export interface ActivityItem {

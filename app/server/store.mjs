@@ -28,6 +28,7 @@ import {
   featuresFor,
   hiveFromBody,
   newReferralCode,
+  normalizePayHandle,
   inviteExhausted,
   listingFromInput,
   newId,
@@ -377,7 +378,7 @@ export function createStore(seed = null, options = {}) {
   /* ── hives + membership ───────────────────────────────────── */
 
   const membersOf = (hiveId) => memberships.get(String(hiveId)) || [];
-  const shapeMember = (m) => ({ id: m.memberId, name: m.name, color: m.color, role: m.role });
+  const shapeMember = (m) => ({ id: m.memberId, name: m.name, color: m.color, role: m.role, payHandle: (m.userId && users.get(m.userId)?.payHandle) || null });
   const hiveOfTrip = (tripId) => trips.get(String(tripId))?.hiveId ?? null;
 
   function isHiveMember(hiveId, userId) {
@@ -754,7 +755,27 @@ export function createStore(seed = null, options = {}) {
       caps: capsFor(entitlement.tier),
       referralCode: user.referralCode || null,
       referredBy: user.referredBy || null,
+      payHandle: user.payHandle || null,
     };
+  }
+
+  /** Profile fields a member edits themselves: display name and payout handle. */
+  function updateProfile(userId, patch) {
+    const user = users.get(userId);
+    if (!user || user.deletedAt) return err('not_found', 404);
+    if (patch?.name !== undefined) {
+      const name = cleanText(patch.name, 64);
+      if (!name) return err('invalid_name', 400);
+      user.name = name;
+      for (const members of memberships.values()) for (const m of members) if (m.userId === userId) m.name = name;
+    }
+    if (patch?.payHandle !== undefined) {
+      const handle = normalizePayHandle(patch.payHandle);
+      if (handle === null) return err('invalid_pay_handle', 400);
+      user.payHandle = handle || null;
+    }
+    schedulePersist();
+    return meProfile(user);
   }
 
   /* ── money ────────────────────────────────────────────────── */
@@ -804,6 +825,20 @@ export function createStore(seed = null, options = {}) {
     fund.push({ id: nextLedgerId++, memberId: me, kind: 'withdrawal', amount: amt, at: now() });
     schedulePersist();
     return getFund(tripId, userId);
+  }
+
+  /** Void instead of delete: the row stays for the audit trail and counts for nothing. */
+  function voidExpense(tripId, userId, expenseId) {
+    const denied = requireMember(tripId, userId);
+    if (denied) return denied;
+    const { trip } = books(tripId);
+    const e = trip.expenses.find((x) => x.id === Number(expenseId));
+    if (!e) return err('expense_not_found', 404);
+    if (e.voidedAt) return err('already_voided', 409);
+    e.voidedAt = now();
+    e.voidedBy = memberIdFor(trip.hiveId, userId);
+    schedulePersist();
+    return { expense: { ...e }, ...getFund(tripId, userId) };
   }
 
   function addExpense(tripId, userId, input) {
@@ -860,6 +895,8 @@ export function createStore(seed = null, options = {}) {
     contribute,
     withdraw,
     addExpense,
+    voidExpense,
+    updateProfile,
     isMember,
     requireMember,
     requireHiveMember,

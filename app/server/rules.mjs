@@ -191,6 +191,14 @@ export function entitlementFromInput(input) {
   };
 }
 
+/** Payout handle for settle-up hand-offs: venmo:@name, cashapp:$tag, paypal:name. */
+export const PAY_HANDLE_RE = /^(venmo|cashapp|paypal):[A-Za-z0-9_.$@-]{2,40}$/;
+export function normalizePayHandle(v) {
+  const s = cleanText(v, 60).replace(/\s+/g, '');
+  if (!s) return '';
+  return PAY_HANDLE_RE.test(s) ? s : null; // '' clears, null = invalid
+}
+
 /** Normalise a create-hive body. */
 export function hiveFromBody(body, ownerId, id) {
   return { id, name: cleanText(body?.name || 'My hive', 60) || 'My hive', ownerId, createdAt: new Date().toISOString() };

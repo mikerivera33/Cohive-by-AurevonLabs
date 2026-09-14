@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { copyText } from '../lib/clipboard';
 import { press } from '../lib/styles';
 import { useApp } from '../store/AppStore';
@@ -85,7 +86,8 @@ function AccountRows({ accounts }: { accounts: Account[] }) {
 }
 
 export function YouTab() {
-  const { planTier, refCode, light, toggleTheme, openPricing, replayOnboarding, say, apiLive, deleteAccount } = useApp();
+  const { planTier, refCode, light, toggleTheme, openPricing, replayOnboarding, say, apiLive, deleteAccount, payHandle, setPayHandle } = useApp();
+  const [handleDraft, setHandleDraft] = useState(payHandle);
 
   const isFree = planTier === 'Free';
   const planName = isFree ? 'Free plan' : planTier;
@@ -302,6 +304,43 @@ export function YouTab() {
             }}
           />
         </button>
+      </div>
+      <div style={{ padding: '14px 2px', borderBottom: '1px solid var(--line)' }}>
+        <div style={{ fontSize: 13.5, marginBottom: 6 }}>Payout handle</div>
+        <p style={{ fontSize: 11.5, color: 'var(--soft)', margin: '0 0 8px', lineHeight: 1.5 }}>
+          Settle-up shows friends a one-tap link to pay you. Cohive never holds the money.
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            value={handleDraft}
+            onChange={(e) => setHandleDraft(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void setPayHandle(handleDraft)}
+            placeholder="venmo:@name · cashapp:$tag · paypal:name"
+            aria-label="Payout handle"
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <button
+            type="button"
+            className="press grot"
+            onClick={() => void setPayHandle(handleDraft)}
+            style={{
+              ...press(0.98),
+              minHeight: 44,
+              background: 'var(--panelS)',
+              border: '1px solid var(--lineB)',
+              color: 'var(--honey)',
+              borderRadius: 999,
+              padding: '0 16px',
+              fontWeight: 700,
+              fontSize: 11,
+              letterSpacing: '.08em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+            }}
+          >
+            Save
+          </button>
+        </div>
       </div>
       <button
         type="button"

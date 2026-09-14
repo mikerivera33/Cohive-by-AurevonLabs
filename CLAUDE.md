@@ -17,11 +17,11 @@ A React 18 + TypeScript + Vite mobile app, Capacitor-ready for iOS/Android.
 npm install
 npm run dev            # http://localhost:5173
 npm run build          # tsc --noEmit + vite build
-npm run verify:engine  # 46 engine property checks (itinerary + money ledger)
-npm run verify:api     # 45 API checks on the memory store (auth, ACL, money, invites, magic links, hives, entitlements)
-npm run verify:pg      # 16 checks against a real Postgres (needs DATABASE_URL) — concurrency, durability, hives, entitlements
+npm run verify:engine  # 47 engine property checks (itinerary + money ledger)
+npm run verify:api     # 47 API checks on the memory store (auth, ACL, money, invites, magic links, hives, entitlements)
+npm run verify:pg      # 18 checks against a real Postgres (needs DATABASE_URL) — concurrency, durability, hives, entitlements
 npm run stress:engine  # seeded fuzz: 300 trips + 2,000 scanner inputs
-npm run smoke          # 77-check browser walkthrough (needs Playwright — see app/README.md)
+npm run smoke          # 80-check browser walkthrough (needs Playwright — see app/README.md)
 npm run e2e:payments   # 21-check payments walkthrough on an iPhone viewport (pot, tiers, booking gate, iOS tap targets)
 npm run stress         # browser endurance: heap/node/listener tracking, floods, spam
 npm run a11y           # axe audit, all screens, both themes — must stay clean

@@ -254,6 +254,12 @@ export function createApi(deps = {}) {
       if (!user) return json(401, { error: 'unauthorized' });
       return json(200, await store.meProfile(user));
     }
+    if (method === 'POST' && path === '/api/auth/me/profile') {
+      if (!user) return json(401, { error: 'unauthorized' });
+      const result = await store.updateProfile(user.id, body);
+      if (result.error) return json(result.status, { error: result.error });
+      return json(200, result);
+    }
 
     // ── Billing: normalised events from RevenueCat / Stripe / App Store adapters ──
     if (method === 'POST' && path === '/api/billing/webhook') {
@@ -396,6 +402,13 @@ export function createApi(deps = {}) {
           return json(result.status, { error: result.error, withdrawable: result.withdrawable });
         }
         return json(201, result);
+      }
+
+      const voidMatch = rest.match(/^\/expenses\/(\d+)\/void$/);
+      if (method === 'POST' && voidMatch) {
+        const result = await store.voidExpense(tripId, user.id, voidMatch[1]);
+        if (result.error) return json(result.status, { error: result.error });
+        return json(200, result);
       }
 
       if (method === 'POST' && rest === '/expenses') {

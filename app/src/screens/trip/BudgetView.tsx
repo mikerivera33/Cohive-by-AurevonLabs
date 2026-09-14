@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 import { SETTLEMENT_CATEGORY } from '../../engine/ledger';
 import { Reveal } from '../../lib/Reveal';
 import { money } from '../../lib/money';
+import { payLinkFor } from '../../lib/payLinks';
 import { memberDot, press } from '../../lib/styles';
 import { useApp } from '../../store/AppStore';
 import type { Expense, MemberId, Payer } from '../../types';
@@ -52,7 +53,7 @@ const key = (id: MemberId) => String(id);
 export function BudgetView() {
   const {
     trip, expenses, fund, ledger, members, meId, plan, say, openPricing, bookingUnlocked,
-    addExpense, contribute, withdraw, settle,
+    addExpense, contribute, withdraw, settle, voidExpense,
     expLabel, setExpLabel, expAmt, setExpAmt,
   } = useApp();
   const [potAmt, setPotAmt] = useState('');
@@ -63,7 +64,7 @@ export function BudgetView() {
   const nameOf = (id: MemberId) => members.find((m) => key(m.id) === key(id))?.name ?? 'Someone';
   const isMe = (id: MemberId) => key(id) === key(meId);
 
-  const real = expenses.filter((e) => e.category !== SETTLEMENT_CATEGORY);
+  const real = expenses.filter((e) => e.category !== SETTLEMENT_CATEGORY && !e.voidedAt);
   const planCost = plan ? plan.totalCost : 0;
   const spent = real.reduce((a, e) => a + e.amount, 0) + planCost;
   const budget = trip.budget;
@@ -128,7 +129,8 @@ export function BudgetView() {
     const p = e.paidBy ?? meId;
     const who = p === 'pot' ? 'Pot' : isMe(p) ? 'You' : nameOf(p);
     const ways = e.splitWith?.length || members.length;
-    return e.category === SETTLEMENT_CATEGORY ? 'settled' : `${who} paid · ${ways} way${ways === 1 ? '' : 's'}`;
+    const base = e.category === SETTLEMENT_CATEGORY ? 'settled' : `${who} paid · ${ways} way${ways === 1 ? '' : 's'}`;
+    return e.voidedAt ? base + ' · voided' : base;
   };
 
   return (
@@ -318,13 +320,24 @@ export function BudgetView() {
           >
             {e.category}
           </span>
-          <span style={{ minWidth: 0 }}>
+          <span style={{ minWidth: 0, textDecoration: e.voidedAt ? 'line-through' : 'none', opacity: e.voidedAt ? 0.6 : 1 }}>
             {e.label}
-            <span style={{ display: 'block', fontSize: 10.5, color: 'var(--soft)', marginTop: 2 }}>{payerLabel(e)}</span>
+            <span style={{ display: 'block', fontSize: 10.5, color: 'var(--soft)', marginTop: 2, textDecoration: 'none' }}>{payerLabel(e)}</span>
           </span>
-          <b style={{ marginLeft: 'auto', color: 'var(--mint)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+          <b style={{ marginLeft: 'auto', color: e.voidedAt ? 'var(--soft)' : 'var(--mint)', fontVariantNumeric: 'tabular-nums', flexShrink: 0, textDecoration: e.voidedAt ? 'line-through' : 'none' }}>
             ${money(e.amount)}
           </b>
+          {!e.voidedAt && (
+            <button
+              type="button"
+              className="press grot"
+              onClick={() => voidExpense(e.id)}
+              aria-label={`Void ${e.label}`}
+              style={{ ...pillButton(false), padding: '7px 10px', flexShrink: 0 }}
+            >
+              Void
+            </button>
+          )}
         </div>
       ))}
 
@@ -362,6 +375,21 @@ export function BudgetView() {
                 <b style={{ color: 'var(--ink)', fontWeight: 600 }}>{isMe(t.to) ? 'You' : nameOf(t.to)}</b>
               </span>
               <b style={{ marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>${money(t.amount)}</b>
+              {(() => {
+                const payee = members.find((m) => key(m.id) === key(t.to));
+                const link = payLinkFor(payee?.payHandle, t.amount, `Cohive · ${trip.name}`);
+                return link ? (
+                  <a
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Pay ${nameOf(t.to)} $${money(t.amount)} via ${link.app}`}
+                    style={{ ...pillButton(true), display: 'inline-flex', alignItems: 'center', textDecoration: 'none', padding: '7px 10px', flexShrink: 0 }}
+                  >
+                    {link.app}
+                  </a>
+                ) : null;
+              })()}
               <button
                 className="press grot"
                 onClick={() => settle(t)}
