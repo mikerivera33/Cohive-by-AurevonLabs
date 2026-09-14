@@ -32,7 +32,9 @@ import {
   apiDemoPurchase,
   apiGetHive,
   apiReact,
+  apiUpdateProfile,
   apiUpdateRestaurant,
+  apiVoidExpense,
   apiCastVote,
   apiContribute,
   apiCreateInvite,
@@ -196,6 +198,11 @@ interface AppStore {
   withdraw: (amount: number) => boolean;
   /** Record a suggested transfer as paid, netting both balances. */
   settle: (t: Transfer) => void;
+  /** Void an expense (audit trail kept); false when refused. */
+  voidExpense: (id: number) => boolean;
+  /** Your payout handle for settle-up links (venmo:@name, cashapp:$tag, paypal:name). */
+  payHandle: string;
+  setPayHandle: (handle: string) => Promise<boolean>;
   addMember: (name: string) => void;
   toggleReaction: (listingId: number, emoji: ReactionEmoji) => void;
 
@@ -339,6 +346,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /* ── subscription ─────────────────────────────────────────── */
   const [planTier, setPlanTier] = useState<PlanTier>(() => load<PlanTier>('planTier', 'Free', isTier));
   const [refCode, setRefCode] = useState<string>(() => load('refCode', '', isShortString));
+  const [payHandle, setPayHandleState] = useState<string>(() => load('payHandle', '', isShortString));
+  useEffect(() => save('payHandle', payHandle), [payHandle]);
   const [linked, setLinked] = useState<string[]>(() => load<string[]>('linked', [], isStringArray));
   useEffect(() => save('planTier', planTier), [planTier]);
   useEffect(() => save('refCode', refCode), [refCode]);
@@ -427,10 +436,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   /** The server's entitlement wins over whatever the demo sheet stored locally. */
-  function applyProfile(p: { entitlement: { tier: PlanTier }; referralCode: string | null }) {
+  function applyProfile(p: { entitlement: { tier: PlanTier }; referralCode: string | null; payHandle?: string | null }) {
     if (isTier(p.entitlement.tier)) setPlanTier(p.entitlement.tier);
     if (p.referralCode) setRefCode(p.referralCode);
+    if (p.payHandle !== undefined) setPayHandleState(p.payHandle || '');
   }
+
+  const setPayHandle = useCallback(
+    async (handle: string) => {
+      const clean = handle.trim();
+      if (clean && !/^(venmo|cashapp|paypal):[A-Za-z0-9_.$@-]{2,40}$/.test(clean)) {
+        say('Use venmo:@name, cashapp:$tag or paypal:name');
+        return false;
+      }
+      if (apiLiveRef.current) {
+        try {
+          applyProfile(await apiUpdateProfile({ payHandle: clean }));
+        } catch {
+          say('Could not save your payout handle');
+          return false;
+        }
+      } else {
+        setPayHandleState(clean);
+        setMembers((prev) => prev.map((m) => (sameId(m.id, meId) ? { ...m, payHandle: clean || null } : m)));
+      }
+      say(clean ? 'Payout handle saved — settle-up links now point at you' : 'Payout handle cleared');
+      return true;
+    },
+    [meId, say]
+  );
 
   const signInWithMagic = useCallback(
     async (email: string, name?: string): Promise<'sent' | 'signed-in' | 'offline'> => {
@@ -890,6 +924,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [addExpense, nameOf]
   );
 
+  const voidExpense = useCallback(
+    (expenseId: number) => {
+      const target = expenses.find((e) => e.id === expenseId);
+      if (!target || target.voidedAt) return false;
+      const tripId = apiTripIdRef.current;
+      if (apiLiveRef.current && tripId) {
+        void (async () => {
+          try {
+            applyBooks(await apiVoidExpense(tripId, expenseId));
+            say('Voided — the books recalculated');
+          } catch (e) {
+            say(moneyError(e, 'Could not void that expense'));
+          }
+        })();
+        return true;
+      }
+      setExpenses((prev) => prev.map((e) => (e.id === expenseId ? { ...e, voidedAt: new Date().toISOString() } : e)));
+      setActivity((prev) => prependActivity(prev, { who: 'You', what: 'voided ' + target.label, when: 'just now' }));
+      say('Voided — the books recalculated');
+      return true;
+    },
+    [applyBooks, expenses, moneyError, say]
+  );
+
   const addMember = useCallback(
     (name: string) => {
       const tripId = apiTripIdRef.current;
@@ -1262,6 +1320,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       contribute,
       withdraw,
       settle,
+      voidExpense,
+      payHandle,
+      setPayHandle,
       addMember,
       toggleReaction,
       scanText,
@@ -1305,7 +1366,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       signInWithMagic, deleteAccount, pendingInvite, joinInvite, inviteLinkFor,
       tripMeta, spots, expenses, members, fund, ledger, meId, activity, nest, table, addedIds,
       hive, currentTripId, switchTrip, createTrip, addListing, addRestaurant, setTried,
-      setTier, addSpotFromScan, addExpense, contribute, withdraw, settle, addMember, toggleReaction,
+      setTier, addSpotFromScan, addExpense, contribute, withdraw, settle, voidExpense, payHandle, setPayHandle, addMember, toggleReaction,
       scanText, scanning, scanResult, scan,
       catFilter, tableFilter, expLabel, expAmt,
       planDays, pace, plan, building, buildStage, generate,

@@ -424,6 +424,43 @@ console.log('\nmoney — pot + splitting');
     const c = s2.contribute('1', b.user.id, 5);
     assert.ok(c.fund.every((f, i, arr) => arr.findIndex((x) => x.id === f.id) === i), 'ledger ids stay unique after hydrate');
   });
+
+  await aok('voiding an expense reverses it, keeps the audit row and cannot repeat', async () => {
+    const books = await call('GET', '/api/trips/1/fund', undefined, a.token);
+    const taxi = books.data.expenses.find((e) => e.label === 'Taxi');
+    assert.equal(s.voidExpense('1', 'nobody', taxi.id).error, 'forbidden');
+    const missing = await call('POST', '/api/trips/1/expenses/999999/void', {}, a.token);
+    assert.equal(missing.status, 404);
+    const r = await call('POST', `/api/trips/1/expenses/${taxi.id}/void`, {}, a.token);
+    assert.equal(r.status, 200);
+    assert.ok(r.data.expense.voidedAt, 'void is stamped');
+    assert.equal(r.data.expense.voidedBy, a.user.id);
+    assert.ok(r.data.expenses.some((e) => e.id === taxi.id && e.voidedAt), 'row stays in the books');
+    const again = await call('POST', `/api/trips/1/expenses/${taxi.id}/void`, {}, a.token);
+    assert.equal(again.status, 409);
+    assert.equal(again.data.error, 'already_voided');
+    const back = await call('POST', '/api/trips/1/fund/withdrawals', { amount: 60 }, a.token);
+    assert.equal(back.status, 201, 'the pot share comes back to the envelope it was charged to');
+    const empty = await call('POST', '/api/trips/1/fund/withdrawals', { amount: 0.01 }, a.token);
+    assert.equal(empty.data.error, 'exceeds_envelope');
+  });
+
+  await aok('payout handles are validated, saved on the profile and shown on members', async () => {
+    const anon = await call('POST', '/api/auth/me/profile', { payHandle: 'venmo:@ada' }, 'deadbeef'.repeat(6));
+    assert.equal(anon.status, 401);
+    const bad = await call('POST', '/api/auth/me/profile', { payHandle: 'zelle:ada' }, a.token);
+    assert.equal(bad.status, 400);
+    assert.equal(bad.data.error, 'invalid_pay_handle');
+    const r = await call('POST', '/api/auth/me/profile', { payHandle: ' venmo:@ada ' }, a.token);
+    assert.equal(r.status, 200);
+    assert.equal(r.data.payHandle, 'venmo:@ada');
+    const trip = await call('GET', '/api/trips/1', undefined, b.token);
+    assert.equal(trip.data.members.find((m) => m.id === a.user.id).payHandle, 'venmo:@ada');
+    const me = await call('GET', '/api/auth/me', undefined, a.token);
+    assert.equal(me.data.payHandle, 'venmo:@ada');
+    const clear = await call('POST', '/api/auth/me/profile', { payHandle: '' }, a.token);
+    assert.equal(clear.data.payHandle, null);
+  });
 }
 
 console.log('\nidentity + invites (memory store)');

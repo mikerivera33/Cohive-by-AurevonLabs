@@ -212,6 +212,34 @@ await aok('two simultaneous withdrawals cannot both pass the envelope check', as
   assert.equal(empty.data.withdrawable, 0, 'envelope is empty after the winning withdrawal');
 });
 
+await aok('voiding a pot-paid bill restores the envelope; double void is refused', async () => {
+  const books = await call('GET', '/api/trips/' + magicTrip + '/fund', undefined, ada.token);
+  const taxi = books.data.expenses.find((e) => e.label === 'Taxi');
+  const stranger = await store.demoAuth({ provider: 'email', name: 'Zed' });
+  const denied = await call('POST', `/api/trips/${magicTrip}/expenses/${taxi.id}/void`, {}, stranger.token);
+  assert.equal(denied.status, 403);
+  const r = await call('POST', `/api/trips/${magicTrip}/expenses/${taxi.id}/void`, {}, ada.token);
+  assert.equal(r.status, 200);
+  assert.ok(r.data.expense.voidedAt);
+  assert.equal(r.data.expense.voidedBy, placeholder);
+  const again = await call('POST', `/api/trips/${magicTrip}/expenses/${taxi.id}/void`, {}, ada.token);
+  assert.equal(again.status, 409);
+  const back = await call('POST', '/api/trips/' + magicTrip + '/fund/withdrawals', { amount: 60 }, ada.token);
+  assert.equal(back.status, 201, 'the $60 pot share is Ada\'s again');
+  const empty = await call('POST', '/api/trips/' + magicTrip + '/fund/withdrawals', { amount: 0.01 }, ada.token);
+  assert.equal(empty.data.error, 'exceeds_envelope');
+});
+
+await aok('payout handle persists on users and surfaces on hive members', async () => {
+  const bad = await call('POST', '/api/auth/me/profile', { payHandle: 'zelle:ada' }, ada.token);
+  assert.equal(bad.data.error, 'invalid_pay_handle');
+  const r = await call('POST', '/api/auth/me/profile', { payHandle: 'cashapp:$ada' }, ada.token);
+  assert.equal(r.status, 200);
+  assert.equal(r.data.payHandle, 'cashapp:$ada');
+  const trip = await call('GET', '/api/trips/' + magicTrip, undefined, bo.token);
+  assert.equal(trip.data.members.find((m) => m.id === placeholder).payHandle, 'cashapp:$ada');
+});
+
 await aok('trip limit and createTrip enforce membership counts', async () => {
   for (let i = 0; i < 2; i++) {
     const r = await call('POST', '/api/trips', { name: 'Trip ' + i, lat: 1, lng: 1 }, bo.token);

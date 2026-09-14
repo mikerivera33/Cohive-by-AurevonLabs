@@ -148,7 +148,7 @@ The API (`server/`) runs on one of two stores behind the same interface:
 
 ```bash
 # local Postgres for the store checks
-DATABASE_URL=postgres://cohive:cohive@127.0.0.1:5432/cohive_test npm run verify:pg   # 14 checks
+DATABASE_URL=postgres://cohive:cohive@127.0.0.1:5432/cohive_test npm run verify:pg   # 18 checks
 DATABASE_URL=... npm start                                                             # API + static app on :8080
 ```
 
@@ -178,6 +178,16 @@ eventId }` signed with HMAC-SHA256 of the raw body (`X-Cohive-Signature`,
 as Free. The first paid event issues the user's permanent referral code (`MIKE-K7Q210`);
 sign-ups carry `ref` for attribution. Outside production, `POST /api/billing/demo-purchase`
 mirrors the demo pricing sheet server-side so the client's plan comes from the API when live.
+
+### Money — voids and settle-up hand-offs
+
+Expenses are never deleted: `POST /api/trips/:id/expenses/:eid/void` stamps `voidedAt` /
+`voidedBy` (any member; 409 on a second void) and the ledger skips the row, so a pot-paid bill
+that is voided refunds each envelope it charged. Cohive never moves money between people —
+settle-up hands off to the payee's own app instead. `POST /api/auth/me/profile { payHandle }`
+stores `venmo:@name`, `cashapp:$tag` or `paypal:name` (`''` clears); members expose it, and the
+Budget view turns each "A pays B" line into a one-tap Venmo / Cash App / PayPal link
+(`src/lib/payLinks.ts`) pre-filled with the amount and trip name.
 
 ### Hives
 
@@ -239,7 +249,7 @@ contributions logged against "Maya" before she joined are still hers. The app ca
 - **Native**: `android:allowBackup="false"`; iOS ATS fully on (no exceptions);
   app id and manifests validated.
 - **CI**: `.github/workflows/ci.yml` runs audit (fails on any vulnerability),
-  typecheck+build, both engine suites, the 77-check walkthrough, the browser
+  typecheck+build, both engine suites, the 80-check walkthrough, the browser
   stress run, the axe audit, and a `cap sync` sanity check on every push/PR.
 
 ## What's persisted

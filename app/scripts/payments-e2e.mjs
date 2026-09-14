@@ -185,7 +185,7 @@ await check('Annual unlocks in-app booking', async () => {
   await tap('Go Annual');
   await page.waitForTimeout(500);
   await has('Cohive+ Annual active');
-  await tap('Flights');
+  await tap('Flights', { exact: true });
   await has('opening your linked accounts');
 });
 let code = '';
