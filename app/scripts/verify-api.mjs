@@ -282,6 +282,102 @@ await aok('addSpot clamps poisoned coordinates', async () => {
   assert.ok(Number.isFinite(res.data.spot.cost));
 });
 
+await aok('oauth cannot merge into a password-registered email', async () => {
+  resetRateLimits();
+  const email = 'squat-oauth@cohive.test';
+  const reg = await req('POST', '/api/auth/register', {
+    email,
+    name: 'Squatter',
+    password: 'password1',
+  });
+  assert.equal(reg.status, 201);
+  const attackerId = reg.data.user.id;
+  const trip = await req(
+    'POST',
+    '/api/trips',
+    { name: 'Attacker hive', city: 'Paris' },
+    reg.data.token
+  );
+  assert.equal(trip.status, 201);
+  const hijack = store.oauthUpsert({
+    provider: 'google',
+    email,
+    name: 'Victim',
+    verified: true,
+  });
+  assert.equal(hijack.error, 'email_conflict');
+  assert.equal(hijack.status, 409);
+  assert.equal(hijack.token, undefined);
+  const stillLogin = await req('POST', '/api/auth/login', {
+    email,
+    password: 'password1',
+  });
+  assert.equal(stillLogin.status, 200);
+  assert.equal(stillLogin.data.user.id, attackerId);
+  const trips = await req('GET', '/api/trips', undefined, stillLogin.data.token);
+  assert.equal(trips.status, 200);
+  assert.equal(trips.data.trips.length, 1);
+});
+
+await aok('oauth cannot merge into a demo email squat', async () => {
+  const store2 = createStore(seed);
+  const demo = store2.demoAuth({
+    provider: 'email',
+    name: 'Squatter',
+    contact: 'demo-squat@cohive.test',
+  });
+  assert.ok(demo.token);
+  const hijack = store2.oauthUpsert({
+    provider: 'google',
+    email: 'demo-squat@cohive.test',
+    name: 'Victim',
+    verified: true,
+  });
+  assert.equal(hijack.error, 'email_conflict');
+  assert.equal(hijack.token, undefined);
+  const stillDemo = store2.getSessionUser(demo.token);
+  assert.ok(stillDemo);
+  assert.equal(stillDemo.id, demo.user.id);
+  assert.equal(stillDemo.oauthVerified, undefined);
+});
+
+await aok('oauth re-login still works for the same provider', async () => {
+  const store2 = createStore(seed);
+  const first = store2.oauthUpsert({
+    provider: 'google',
+    email: 'returning@cohive.test',
+    name: 'Maya',
+    verified: true,
+  });
+  assert.ok(first.token);
+  const again = store2.oauthUpsert({
+    provider: 'google',
+    email: 'returning@cohive.test',
+    name: 'Maya',
+    verified: true,
+  });
+  assert.ok(again.token);
+  assert.equal(again.user.id, first.user.id);
+  assert.equal(again.error, undefined);
+});
+
+await aok('oauth callback redirects without a session on email_conflict', async () => {
+  resetRateLimits();
+  const orig = store.oauthUpsert;
+  store.oauthUpsert = () => ({ error: 'email_conflict', status: 409 });
+  try {
+    const res = await api.handle(
+      new Request('http://test/api/auth/oauth/google/callback?code=stolen')
+    );
+    assert.equal(res.status, 302);
+    const loc = res.headers.get('Location') || '';
+    assert.ok(loc.includes('error=email_conflict'));
+    assert.ok(!/[?&]token=/.test(loc));
+  } finally {
+    store.oauthUpsert = orig;
+  }
+});
+
 await aok('register does not auto-join seed trip (ACL)', async () => {
   resetRateLimits();
   const reg = await req('POST', '/api/auth/register', {
@@ -318,6 +414,26 @@ await aok('file-backed store survives reload', async () => {
     assert.ok(!trip.error);
     const spot = trip.spots.find((x) => x.id === 1);
     assert.equal(spot.tier, 'maybe');
+    const oauth = s1.oauthUpsert({
+      provider: 'google',
+      email: 'persist-oauth@cohive.test',
+      name: 'OAuth Maya',
+      verified: true,
+    });
+    assert.ok(oauth.token);
+    await s1.flush();
+    const s3 = createStore(seed, { persistPath: path });
+    const snap2 = await loadSnapshot(path);
+    s3.hydrate(snap2);
+    const reOAuth = s3.oauthUpsert({
+      provider: 'google',
+      email: 'persist-oauth@cohive.test',
+      name: 'OAuth Maya',
+      verified: true,
+    });
+    assert.ok(reOAuth.token);
+    assert.equal(reOAuth.user.id, oauth.user.id);
+    assert.equal(s3.getSessionUser(reOAuth.token).oauthVerified, true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
