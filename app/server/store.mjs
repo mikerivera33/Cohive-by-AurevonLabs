@@ -4,11 +4,26 @@
  */
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
-import { clampFinite, clampLat, clampLng } from './safeJson.mjs';
 import { defaultPersistPath, loadSnapshot, saveSnapshot } from './persist.mjs';
 import { isValidAmount, potShortfalls, toCents, withdrawable } from './engine-bundle.mjs';
+import {
+  INVITE_CODE_RE,
+  LIMITS,
+  MEMBER_COLORS,
+  OWNER_COLOR,
+  cleanText,
+  expenseFromInput,
+  inviteExhausted,
+  newInviteCode,
+  newToken,
+  normalizeEmail,
+  publicInvite,
+  sha256,
+  spotFromCandidate,
+  tripFromBody,
+} from './rules.mjs';
 
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14; // 14 days
+const SESSION_TTL_MS = LIMITS.SESSION_TTL_MS; // 30 days — matches the Postgres store and the cookie Max-Age
 const TOKEN_RE = /^[a-f0-9]{48}$/;
 const FREE_TRIP_LIMIT = 3;
 const MAX_SPOTS_PER_TRIP = 200;
@@ -65,6 +80,10 @@ export function createStore(seed = null, options = {}) {
   const votesByTrip = new Map();
   /** @type {Map<string, Array<{ id: number, memberId: string, kind: 'contribution' | 'withdrawal', amount: number, at: string }>>} */
   const fundByTrip = new Map();
+  /** @type {Map<string, any>} code -> invite */
+  const invites = new Map();
+  /** @type {Map<string, { email: string, name: string, expiresAt: number, usedAt: number | null }>} */
+  const magicLinks = new Map();
 
   let nextSpotId = 500;
   let nextLedgerId = 1000;
@@ -140,6 +159,8 @@ export function createStore(seed = null, options = {}) {
       fundByTrip: Object.fromEntries(
         [...fundByTrip.entries()].map(([k, v]) => [k, v.map((x) => ({ ...x }))])
       ),
+      invites: [...invites.values()].map((x) => ({ ...x })),
+      magicLinks: [...magicLinks.entries()].map(([hash, m]) => ({ hash, ...m })),
       nextSpotId,
       nextLedgerId,
     };
@@ -154,6 +175,8 @@ export function createStore(seed = null, options = {}) {
     spotsByTrip.clear();
     votesByTrip.clear();
     fundByTrip.clear();
+    invites.clear();
+    magicLinks.clear();
 
     for (const u of snap.users || []) {
       if (!u?.id || !u?.email) continue;
@@ -171,8 +194,11 @@ export function createStore(seed = null, options = {}) {
       trips.set(String(t.id), t);
     }
     for (const [k, v] of Object.entries(snap.memberships || {})) {
-      memberships.set(k, Array.isArray(v) ? v : []);
+      // Pre-invite snapshots keyed members by userId only; memberId is the ledger key.
+      memberships.set(k, Array.isArray(v) ? v.map((m) => ({ ...m, memberId: m.memberId || m.userId })) : []);
     }
+    for (const i of snap.invites || []) if (i?.code) invites.set(i.code, i);
+    for (const m of snap.magicLinks || []) if (m?.hash) magicLinks.set(m.hash, { email: m.email, name: m.name, expiresAt: m.expiresAt, usedAt: m.usedAt ?? null });
     for (const [k, v] of Object.entries(snap.spotsByTrip || {})) {
       spotsByTrip.set(k, Array.isArray(v) ? v : []);
     }
@@ -225,7 +251,8 @@ export function createStore(seed = null, options = {}) {
       schedulePersist();
       return null;
     }
-    return users.get(sess.userId) || null;
+    const u = users.get(sess.userId);
+    return u && !u.deletedAt ? u : null;
   }
 
   function register({ email, name, password }) {
@@ -367,8 +394,9 @@ export function createStore(seed = null, options = {}) {
     }
     members.push({
       userId: user.id,
+      memberId: user.id,
       name: user.name,
-      color: '#4EB4FF',
+      color: OWNER_COLOR,
       role: members.length ? 'member' : 'owner',
     });
     memberships.set(tripId, members);
@@ -378,6 +406,12 @@ export function createStore(seed = null, options = {}) {
     const members = memberships.get(String(tripId));
     if (!members) return false;
     return members.some((m) => m.userId === userId);
+  }
+
+  /** The ledger key for `userId` in this trip (direct members: their user id). */
+  function memberIdFor(tripId, userId) {
+    const m = (memberships.get(String(tripId)) || []).find((x) => x.userId === userId);
+    return m ? m.memberId : userId;
   }
 
   function requireMember(tripId, userId) {
@@ -409,12 +443,12 @@ export function createStore(seed = null, options = {}) {
     const trip = trips.get(String(tripId));
     const spots = (spotsByTrip.get(String(tripId)) || []).map((s) => ({ ...s }));
     const members = (memberships.get(String(tripId)) || []).map((m) => ({
-      id: m.userId,
+      id: m.memberId,
       name: m.name,
       color: m.color,
       role: m.role,
     }));
-    return { trip: { ...trip }, spots, members, fund: getFund(tripId, userId).fund };
+    return { trip: { ...trip }, spots, members, fund: getFund(tripId, userId).fund, me: memberIdFor(tripId, userId) };
   }
 
   // ── Money: shared pot + cost splitting ─────────────────────
@@ -422,7 +456,7 @@ export function createStore(seed = null, options = {}) {
   // someone else, and a withdrawal may never exceed the user's own envelope.
 
   function memberIds(tripId) {
-    return (memberships.get(String(tripId)) || []).map((m) => m.userId);
+    return (memberships.get(String(tripId)) || []).map((m) => m.memberId);
   }
 
   function books(tripId) {
@@ -455,7 +489,7 @@ export function createStore(seed = null, options = {}) {
     if (fund.length >= MAX_FUND_ENTRIES_PER_TRIP) return { error: 'fund_limit', status: 400 };
     fund.push({
       id: nextLedgerId++,
-      memberId: userId,
+      memberId: memberIdFor(tripId, userId),
       kind: 'contribution',
       amount: amt,
       at: new Date().toISOString(),
@@ -472,13 +506,14 @@ export function createStore(seed = null, options = {}) {
     const { trip, fund } = books(tripId);
     if (fund.length >= MAX_FUND_ENTRIES_PER_TRIP) return { error: 'fund_limit', status: 400 };
     const owner = trip.ownerId || memberIds(tripId)[0];
-    const limit = withdrawable(userId, memberIds(tripId), trip.expenses, fund, owner);
+    const me = memberIdFor(tripId, userId);
+    const limit = withdrawable(me, memberIds(tripId), trip.expenses, fund, owner);
     if (toCents(amt) > toCents(limit)) {
       return { error: 'exceeds_envelope', status: 400, withdrawable: limit };
     }
     fund.push({
       id: nextLedgerId++,
-      memberId: userId,
+      memberId: me,
       kind: 'withdrawal',
       amount: amt,
       at: new Date().toISOString(),
@@ -490,23 +525,13 @@ export function createStore(seed = null, options = {}) {
   function addExpense(tripId, userId, input) {
     const denied = requireMember(tripId, userId);
     if (denied) return denied;
-    const clean = (v, max) => String(v ?? '').replace(/<[^>]*>/g, '').trim().slice(0, max);
-    const label = clean(input?.label, 80);
-    if (!label) return { error: 'invalid_label', status: 400 };
-    const amt = Number(input?.amount);
-    if (!isValidAmount(amt)) return { error: 'invalid_amount', status: 400 };
-    const category = clean(input?.category, 24).toLowerCase() || 'other';
     const ids = memberIds(tripId);
     const { trip, fund } = books(tripId);
     if (trip.expenses.length >= MAX_EXPENSES_PER_TRIP) return { error: 'expense_limit', status: 400 };
-    const paidBy =
-      input?.paidBy === 'pot' ? 'pot' : ids.includes(String(input?.paidBy)) ? String(input.paidBy) : userId;
-    let splitWith = Array.isArray(input?.splitWith)
-      ? [...new Set(input.splitWith.slice(0, MAX_MEMBERS_PER_TRIP).map(String))].filter((id) => ids.includes(id))
-      : [];
-    if (!splitWith.length) splitWith = ids;
-    const expense = { id: nextLedgerId++, label, category, amount: amt, paidBy, splitWith };
-    if (paidBy === 'pot') {
+    const norm = expenseFromInput(input, ids, memberIdFor(tripId, userId));
+    if (norm.error) return norm;
+    const expense = { id: nextLedgerId++, ...norm.expense };
+    if (expense.paidBy === 'pot') {
       const owner = trip.ownerId || ids[0];
       const shortfalls = potShortfalls(expense, ids, trip.expenses, fund, owner);
       if (shortfalls.length) return { error: 'pot_shortfall', status: 400, shortfalls };
@@ -569,59 +594,34 @@ export function createStore(seed = null, options = {}) {
       return { error: 'member_limit', status: 400 };
     }
     const inviteId = 'invite-' + id();
-    const colors = ['#60A5FA', '#F472B6', '#34D399', '#A78BFA', '#FBBF24'];
     const member = {
-      userId: inviteId,
+      userId: null,
+      memberId: inviteId,
       name: display,
-      color: colors[members.length % colors.length],
+      color: MEMBER_COLORS[members.length % MEMBER_COLORS.length],
       role: 'member',
     };
     members.push(member);
     memberships.set(String(tripId), members);
+    const inv = createInvite(tripId, userId, { memberId: inviteId });
     schedulePersist();
     return {
-      member: { id: member.userId, name: member.name, color: member.color, role: member.role },
+      member: { id: member.memberId, name: member.name, color: member.color, role: member.role },
+      invite: inv.invite,
     };
   }
 
   function addSpot(tripId, userId, candidate, source) {
     const denied = requireMember(tripId, userId);
     if (denied) return denied;
-    if (!candidate || typeof candidate !== 'object' || typeof candidate.name !== 'string') {
-      return { error: 'invalid_candidate', status: 400 };
-    }
     const spots = spotsByTrip.get(String(tripId)) || [];
     if (spots.length >= MAX_SPOTS_PER_TRIP) {
       return { error: 'spot_limit', status: 400 };
     }
-    const category =
-      typeof candidate.category === 'string' && ALLOWED_CATEGORIES.has(candidate.category)
-        ? candidate.category
-        : 'sight';
-    const open =
-      candidate.open == null || !Number.isFinite(Number(candidate.open))
-        ? null
-        : clampFinite(candidate.open, 0, 24);
-    const close =
-      candidate.close == null || !Number.isFinite(Number(candidate.close))
-        ? null
-        : clampFinite(candidate.close, 0, 28);
-    const spot = {
-      id: nextSpotId++,
-      name: String(candidate.name).slice(0, 120),
-      category,
-      lat: clampLat(candidate.lat),
-      lng: clampLng(candidate.lng),
-      duration: clampFinite(candidate.duration, 60, 24 * 60) || 60,
-      cost: clampFinite(candidate.cost, 0, 1_000_000),
-      rating: 4,
-      open,
-      close,
-      source: String(source || 'import').slice(0, 80),
-      tier: null,
-      votes: 0,
-      note: candidate.matched === 'exact' ? '' : 'Confirmed from scan',
-    };
+    const made = spotFromCandidate(candidate, source, nextSpotId);
+    if (made.error) return made;
+    nextSpotId++;
+    const spot = made.spot;
     spots.push(spot);
     spotsByTrip.set(String(tripId), spots);
     schedulePersist();
@@ -634,37 +634,23 @@ export function createStore(seed = null, options = {}) {
     return n;
   }
 
-  function createTrip(userId, body) {
+  function createTrip(userId, body, opts = {}) {
     if (tripCountForUser(userId) >= FREE_TRIP_LIMIT) {
       return { error: 'trip_limit', status: 402 };
     }
     const tripId = id();
-    const trip = {
-      id: tripId,
-      name: String(body?.name || 'New trip').slice(0, 80),
-      city: String(body?.city || '').slice(0, 80),
-      country: String(body?.country || '').slice(0, 80),
-      startDate: String(body?.startDate || new Date().toISOString().slice(0, 10)),
-      days: Math.max(1, Math.min(14, Math.floor(clampFinite(body?.days, 3, 14)) || 3)),
-      pace: body?.pace === 'relaxed' || body?.pace === 'packed' ? body.pace : 'balanced',
-      startHour: Math.min(23, Math.floor(clampFinite(body?.startHour, 9, 23))),
-      endHour: Math.min(24, Math.floor(clampFinite(body?.endHour, 21, 24))),
-      budget: clampFinite(body?.budget, 0, 10_000_000),
-      currency: String(body?.currency || 'USD').slice(0, 8),
-      lat: clampLat(body?.lat),
-      lng: clampLng(body?.lng),
-      expenses: [],
-      ownerId: userId,
-    };
+    const trip = tripFromBody(body, userId, tripId);
     const user = users.get(userId);
     trips.set(tripId, trip);
-    spotsByTrip.set(tripId, []);
+    spotsByTrip.set(tripId, (opts.seedSpots ? seed?.tripSpots || [] : []).map((sp) => ({ ...sp, tier: null, votes: 0 })));
     votesByTrip.set(tripId, []);
+    fundByTrip.set(tripId, []);
     memberships.set(tripId, [
       {
         userId,
+        memberId: userId,
         name: user?.name || 'You',
-        color: '#4EB4FF',
+        color: OWNER_COLOR,
         role: 'owner',
       },
     ]);
@@ -672,7 +658,152 @@ export function createStore(seed = null, options = {}) {
     return { trip };
   }
 
+  // ── Invites ─────────────────────────────────────────────────
+  function createInvite(tripId, userId, opts = {}) {
+    const denied = requireMember(tripId, userId);
+    if (denied) return denied;
+    const t = String(tripId);
+    const members = memberships.get(t) || [];
+    const memberId = opts.memberId ? String(opts.memberId) : null;
+    if (memberId) {
+      const m = members.find((x) => x.memberId === memberId);
+      if (!m) return { error: 'member_not_found', status: 404 };
+      if (m.userId) return { error: 'already_joined', status: 409 };
+    }
+    let count = 0;
+    for (const i of invites.values()) if (i.tripId === t) count++;
+    if (count >= LIMITS.MAX_INVITES_PER_TRIP) return { error: 'invite_limit', status: 400 };
+    const invite = {
+      code: newInviteCode(),
+      tripId: t,
+      memberId,
+      createdBy: userId,
+      expiresAt: Date.now() + LIMITS.INVITE_TTL_MS,
+      maxUses: memberId ? 1 : Math.max(1, Math.min(50, Math.floor(Number(opts.maxUses)) || 1)),
+      uses: 0,
+      createdAt: new Date().toISOString(),
+    };
+    invites.set(invite.code, invite);
+    schedulePersist();
+    return { invite: publicInvite(invite) };
+  }
+
+  /** Public preview — enough to render "Maya invited you to Tokyo" before sign-in. */
+  function getInvite(code) {
+    if (!INVITE_CODE_RE.test(String(code || ''))) return { error: 'invite_not_found', status: 404 };
+    const i = invites.get(code);
+    if (!i) return { error: 'invite_not_found', status: 404 };
+    const trip = trips.get(i.tripId);
+    if (!trip) return { error: 'invite_not_found', status: 404 };
+    const inviter = users.get(i.createdBy);
+    const slot = i.memberId ? (memberships.get(i.tripId) || []).find((m) => m.memberId === i.memberId) : null;
+    return {
+      invite: {
+        code: i.code,
+        expired: inviteExhausted(i),
+        trip: { id: trip.id, name: trip.name, city: trip.city, country: trip.country },
+        inviter: inviter?.name || 'A hive member',
+        memberName: slot?.name || null,
+      },
+    };
+  }
+
+  function acceptInvite(code, userId) {
+    if (!INVITE_CODE_RE.test(String(code || ''))) return { error: 'invite_not_found', status: 404 };
+    const i = invites.get(code);
+    if (!i || !trips.has(i.tripId)) return { error: 'invite_not_found', status: 404 };
+    const user = users.get(userId);
+    if (!user || user.deletedAt) return { error: 'unauthorized', status: 401 };
+    const trip = trips.get(i.tripId);
+    const members = memberships.get(i.tripId) || [];
+    const existing = members.find((m) => m.userId === userId);
+    const shape = (m) => ({ id: m.memberId, name: m.name, color: m.color, role: m.role });
+    if (existing) return { trip: { ...trip }, member: shape(existing), joined: false };
+    if (inviteExhausted(i)) return { error: 'invite_expired', status: 410 };
+    let member;
+    if (i.memberId) {
+      const slot = members.find((m) => m.memberId === i.memberId);
+      if (!slot) return { error: 'member_not_found', status: 404 };
+      if (slot.userId) return { error: 'invite_used', status: 409 };
+      slot.userId = userId;
+      if (user.name && user.name !== 'You') slot.name = user.name;
+      member = slot;
+    } else {
+      if (members.length >= MAX_MEMBERS_PER_TRIP) return { error: 'member_limit', status: 400 };
+      member = { userId, memberId: userId, name: user.name || 'You', color: MEMBER_COLORS[members.length % MEMBER_COLORS.length], role: 'member' };
+      members.push(member);
+      memberships.set(i.tripId, members);
+    }
+    i.uses++;
+    schedulePersist();
+    return { trip: { ...trip }, member: shape(member), joined: true };
+  }
+
+  // ── Magic links (passwordless email) ─────────────────────────
+  function requestMagicLink({ email, name }) {
+    const norm = normalizeEmail(email);
+    if (!norm) return { error: 'invalid_email', status: 400 };
+    const now = Date.now();
+    for (const [h, m] of magicLinks) if (m.expiresAt < now - 86_400_000) magicLinks.delete(h);
+    const token = newToken();
+    magicLinks.set(sha256(token), { email: norm, name: cleanText(name, 64), expiresAt: now + LIMITS.MAGIC_TTL_MS, usedAt: null });
+    schedulePersist();
+    return { token, email: norm };
+  }
+
+  function consumeMagicLink(token) {
+    if (!token || !TOKEN_RE.test(token)) return { error: 'invalid_token', status: 400 };
+    const m = magicLinks.get(sha256(token));
+    if (!m || m.usedAt || m.expiresAt < Date.now()) return { error: 'invalid_token', status: 400 };
+    m.usedAt = Date.now();
+    let user = users.get(m.email);
+    let created = false;
+    if (!user) {
+      const { salt, hash } = hashPassword(newToken());
+      user = { id: id(), email: m.email, name: m.name || m.email.split('@')[0], salt, hash, provider: 'email', oauthVerified: true, createdAt: new Date().toISOString() };
+      users.set(m.email, user);
+      users.set(user.id, user);
+      created = true;
+      // A real account starts with its own trip, not the shared demo one.
+      createTrip(user.id, { ...(seed?.trip || {}), name: 'My first trip' }, { seedSpots: true });
+    } else if (user.deletedAt) {
+      return { error: 'account_deleted', status: 410 };
+    } else {
+      user.oauthVerified = true;
+    }
+    const sessionToken = createSession(user.id);
+    schedulePersist();
+    return { user: publicUser(user), token: sessionToken, mode: 'magic', created };
+  }
+
+  // ── Account deletion (App Store requirement; GDPR erasure) ───
+  function deleteAccount(userId) {
+    const user = users.get(userId);
+    if (!user) return { error: 'not_found', status: 404 };
+    for (const [token, s] of sessions) if (s.userId === userId) sessions.delete(token);
+    users.delete(user.email);
+    user.email = `deleted-${user.id}@cohive.local`;
+    user.name = 'Deleted member';
+    user.salt = null;
+    user.hash = null;
+    user.provider = null;
+    user.contact = undefined;
+    user.deletedAt = new Date().toISOString();
+    users.set(user.email, user);
+    for (const members of memberships.values()) {
+      for (const m of members) {
+        if (m.userId === userId) {
+          m.userId = null; // ledger key (memberId) stays so balances still add up
+          m.name = 'Deleted member';
+        }
+      }
+    }
+    schedulePersist();
+    return { ok: true };
+  }
+
   return {
+    backend: 'memory',
     register,
     login,
     demoAuth,
@@ -686,6 +817,12 @@ export function createStore(seed = null, options = {}) {
     addMember,
     addSpot,
     createTrip,
+    createInvite,
+    getInvite,
+    acceptInvite,
+    requestMagicLink,
+    consumeMagicLink,
+    deleteAccount,
     getFund,
     contribute,
     withdraw,
@@ -705,6 +842,7 @@ export function createStore(seed = null, options = {}) {
     _memberships: memberships,
     _spotsByTrip: spotsByTrip,
     _snapshot: toSnapshot,
+    _invites: invites,
   };
 }
 

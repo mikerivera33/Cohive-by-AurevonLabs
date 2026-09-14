@@ -137,6 +137,44 @@ spam; double-tap Generate; Days=999 clamping; oversized inputs and layout
 overflow checks. Heap stayed 3.6→4.3MB across the full run with flat node and
 listener counts, and exactly one live Leaflet map after churn.
 
+## Backend
+
+The API (`server/`) runs on one of two stores behind the same interface:
+
+| Store | When | Notes |
+| --- | --- | --- |
+| Memory + JSON file | default in dev (`COHIVE_DATA_FILE`) | single node; used by `verify:api` |
+| **Postgres** | `DATABASE_URL` is set | migrations in `server/migrations/`, applied on boot; money ops lock the trip row inside one transaction; used by `verify:pg` |
+
+```bash
+# local Postgres for the store checks
+DATABASE_URL=postgres://cohive:cohive@127.0.0.1:5432/cohive_test npm run verify:pg   # 14 checks
+DATABASE_URL=... npm start                                                             # API + static app on :8080
+```
+
+Environment (see `.env.example`): `DATABASE_URL`, `COHIVE_PUBLIC_URL` (where email and invite links
+point), `RESEND_API_KEY` + `COHIVE_MAIL_FROM` (magic-link mail; without them the API returns a
+`devLink` outside production), `GOOGLE_CLIENT_ID/SECRET`, `APPLE_CLIENT_ID/SECRET`, `COHIVE_CORS_ORIGIN`.
+
+### Identity
+
+- **Magic links** — `POST /api/auth/magic {email}` mails a one-tap link; `GET /api/auth/magic/verify`
+  redirects into the app with a session. Links are hashed at rest, single-use, 15-minute expiry.
+  A new account starts with its own trip, never the shared demo trip.
+- **Sessions** — Bearer token for native, plus an `HttpOnly; SameSite=Lax` cookie for the web app.
+- **Account deletion** — `DELETE /api/auth/me` revokes sessions and anonymises the profile; trip
+  ledgers keep a "Deleted member" placeholder so balances still add up.
+- Google/Apple OAuth activates when the client IDs are configured (`server/oauth.mjs`).
+
+### Invites
+
+Adding a member creates a placeholder plus a single-use invite (`POST /api/trips/:id/members` →
+`{ member, invite, url }`); `POST /api/trips/:id/invites` mints open links with `maxUses`.
+`GET /api/invites/:code` previews without sign-in; `POST /api/invites/:code/accept` binds the
+signed-in user to the placeholder — the placeholder's id stays the ledger key, so any pot
+contributions logged against "Maya" before she joined are still hers. The app captures
+`?invite=CODE` from a link, keeps it through onboarding, and redeems it once a session exists.
+
 ## Product rules
 
 - **Money — pot + envelopes.** Each member's contribution sits in their own envelope; a
@@ -184,14 +222,14 @@ listener counts, and exactly one live Leaflet map after churn.
 
 ## What's persisted
 
-Theme, onboarding completion, plan tier, referral code, linked accounts, and the
-API session token survive a reload via `localStorage` (validated reads). Hive
-content for the demo stays in-memory on the client; when `/api` is live, trips /
-votes / members are server-authoritative and file-backed on Node hosts.
+Theme, onboarding completion, plan tier, referral code, linked accounts, a pending invite
+code, and the API session token survive a reload via `localStorage` (validated reads). Hive
+content for the demo stays in-memory on the client; when `/api` is live, trips / votes /
+members / money are server-authoritative — Postgres with `DATABASE_URL`, else a JSON file.
 
 ## Next engineering steps
 
-1. Durable multi-instance DB (Postgres / Netlify DB) + real OAuth for Apple/Google
+1. Apple/Google OAuth keys on the hosts, native PKCE flows, push notifications
 2. Live geocoding via Nominatim (cached and throttled, as in rhyme-plus `lib/geocode.js`)
 3. Real OAuth for the 21 account connections; the UI is wired, the handshake is not
 4. OpenTable/Resy deep-link booking behind the Annual entitlement

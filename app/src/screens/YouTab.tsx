@@ -85,7 +85,7 @@ function AccountRows({ accounts }: { accounts: Account[] }) {
 }
 
 export function YouTab() {
-  const { planTier, refCode, light, toggleTheme, openPricing, replayOnboarding, say } = useApp();
+  const { planTier, refCode, light, toggleTheme, openPricing, replayOnboarding, say, apiLive, deleteAccount } = useApp();
 
   const isFree = planTier === 'Free';
   const planName = isFree ? 'Free plan' : planTier;
@@ -325,6 +325,34 @@ export function YouTab() {
       >
         Replay welcome tour
       </button>
+      {apiLive ? (
+        <button
+          type="button"
+          className="press"
+          onClick={() => {
+            if (window.confirm('Delete your Cohive account? Your sign-in is revoked and your profile is erased. Shared trip records keep a "Deleted member" placeholder so balances still add up.')) {
+              void deleteAccount();
+            }
+          }}
+          style={{
+            ...press(0.98),
+            display: 'block',
+            width: '100%',
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            borderBottom: '1px solid var(--line)',
+            color: 'var(--soft)',
+            minHeight: 48,
+            padding: '14px 2px',
+            fontSize: 13.5,
+            fontFamily: "'Outfit', system-ui, sans-serif",
+            cursor: 'pointer',
+          }}
+        >
+          Delete my account
+        </button>
+      ) : null}
 
       <p style={{ fontSize: 10.5, color: 'var(--soft)', textAlign: 'center', margin: '26px 0 0', lineHeight: 1.6 }}>
         Cohive 1.0 · crafted by <b style={{ color: 'var(--honey)' }}>AurevonLabs</b>

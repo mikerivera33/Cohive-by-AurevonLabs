@@ -1,11 +1,21 @@
 import { useState } from 'react';
 
-import { memberDot } from '../../lib/styles';
+import { copyText } from '../../lib/clipboard';
+import { memberDot, press } from '../../lib/styles';
 import { useApp } from '../../store/AppStore';
+import type { MemberId } from '../../types';
+
+const isPlaceholder = (id: MemberId) => String(id).startsWith('invite-');
 
 export function CrewView() {
-  const { members, activity, addMember } = useApp();
+  const { members, activity, addMember, apiLive, inviteLinkFor, say } = useApp();
   const [newMember, setNewMember] = useState('');
+
+  const shareInvite = async (memberId?: MemberId) => {
+    const url = await inviteLinkFor(memberId);
+    if (!url) return;
+    say((await copyText(url)) ? 'Invite link copied — send it to them' : url);
+  };
 
   const onAdd = () => {
     const n = newMember.trim();
@@ -23,12 +33,27 @@ export function CrewView() {
       </p>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-        {members.map((m) => (
-          <span key={m.id} className="memberPill">
-            <span style={memberDot(m.color)} />
-            {m.name}
-          </span>
-        ))}
+        {members.map((m) =>
+          apiLive && isPlaceholder(m.id) ? (
+            <button
+              key={m.id}
+              type="button"
+              className="memberPill press"
+              onClick={() => void shareInvite(m.id)}
+              aria-label={`Copy invite link for ${m.name}`}
+              style={{ ...press(0.96), minHeight: 44, cursor: 'pointer', color: 'var(--ink)' }}
+            >
+              <span style={memberDot(m.color)} />
+              {m.name}
+              <span style={{ fontSize: 10.5, color: 'var(--honey)', letterSpacing: '.06em', textTransform: 'uppercase' }}>· link</span>
+            </button>
+          ) : (
+            <span key={m.id} className="memberPill">
+              <span style={memberDot(m.color)} />
+              {m.name}
+            </span>
+          )
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 9, marginBottom: 20 }}>
@@ -58,6 +83,31 @@ export function CrewView() {
           +
         </button>
       </div>
+
+      {apiLive ? (
+        <button
+          type="button"
+          className="press grot"
+          onClick={() => void shareInvite()}
+          style={{
+            ...press(0.98),
+            width: '100%',
+            margin: '-8px 0 20px',
+            minHeight: 44,
+            background: 'var(--panelS)',
+            border: '1px solid var(--lineB)',
+            color: 'var(--honey)',
+            borderRadius: 999,
+            fontWeight: 700,
+            fontSize: 11.5,
+            letterSpacing: '.09em',
+            textTransform: 'uppercase',
+            cursor: 'pointer',
+          }}
+        >
+          Copy hive invite link
+        </button>
+      ) : null}
 
       <h2 className="sectionTitle" style={{ margin: '0 0 4px' }}>
         Trip activity

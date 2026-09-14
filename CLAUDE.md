@@ -18,6 +18,8 @@ npm install
 npm run dev            # http://localhost:5173
 npm run build          # tsc --noEmit + vite build
 npm run verify:engine  # 46 engine property checks (itinerary + money ledger)
+npm run verify:api     # 34 API checks on the memory store (auth, ACL, money, invites, magic links)
+npm run verify:pg      # 14 checks against a real Postgres (needs DATABASE_URL) — concurrency, durability
 npm run stress:engine  # seeded fuzz: 300 trips + 2,000 scanner inputs
 npm run smoke          # 71-check browser walkthrough (needs Playwright — see app/README.md)
 npm run e2e:payments   # 21-check payments walkthrough on an iPhone viewport (pot, tiers, booking gate, iOS tap targets)
@@ -46,6 +48,10 @@ CI (`.github/workflows/ci.yml`) runs all of the above plus `npm audit`
   a member withdraws at most their own envelope, the pot pays a bill only when every share
   is covered, Σ envelopes === pot, balances net to zero. Keep `verify:engine`, the ledger
   fuzz in `stress:engine` and the money section of `verify:api` green when touching it.
+- **Backend**: `server/store.mjs` (memory + JSON file) and `server/store-pg.mjs` (Postgres,
+  `DATABASE_URL`) implement one interface; shared validation lives in `server/rules.mjs` — change
+  rules there, never in one store only. Member ids are the ledger keys: a placeholder created by
+  "Invite Maya" keeps its id when Maya accepts, so money logged before she joined stays hers.
 - **Product rules**: Free = 3 hives / 3 trips, booking + account linking gated;
   Cohive+ $4.99/mo unlocks the 21 account connections; Annual $33/yr (featured)
   adds in-app booking; Platinum $129 lifetime. Any paid plan generates a

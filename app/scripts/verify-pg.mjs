@@ -1,0 +1,249 @@
+/**
+ * Postgres store checks — the same API surface as verify:api, driven against
+ * a real database: auth (password, demo, magic link), invites, ACL, votes,
+ * spots, money with true concurrency, account deletion, and durability across
+ * store instances. Needs DATABASE_URL (see README "Backend").
+ *
+ *   DATABASE_URL=postgres://cohive:cohive@127.0.0.1:5432/cohive_test npm run verify:pg
+ */
+import assert from 'node:assert/strict';
+
+import { createApi } from '../server/api.mjs';
+import { createPgStore } from '../server/store-pg.mjs';
+import { seed } from '../server/seed.mjs';
+import { scanImport } from '../server/engine-bundle.mjs';
+import { resetRateLimits } from '../server/rateLimit.mjs';
+import { createDb } from '../server/db.mjs';
+
+const url = process.env.DATABASE_URL;
+if (!url) {
+  console.log('verify:pg — skipped (DATABASE_URL not set)');
+  process.exit(0);
+}
+
+// Fresh schema every run.
+{
+  const db = createDb(url);
+  await db.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
+  await db.close();
+}
+
+let passed = 0;
+async function aok(label, fn) {
+  try {
+    await fn();
+    passed++;
+    console.log('  ✓ ' + label);
+  } catch (e) {
+    console.error('  ✗ ' + label);
+    throw e;
+  }
+}
+
+const store = await createPgStore(seed, { url });
+const api = createApi({ store, scanImport });
+const call = async (method, path, body, token, extraHeaders = {}) => {
+  const res = await api.handle(
+    new Request('http://x' + path, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: 'Bearer ' + token } : {}),
+        ...extraHeaders,
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      redirect: 'manual',
+    })
+  );
+  return { status: res.status, headers: res.headers, data: await res.json().catch(() => ({})) };
+};
+
+console.log('\npostgres backend: ' + store.backend);
+resetRateLimits();
+
+let ada;
+let bo;
+await aok('register + login round-trip; session cookie is HttpOnly', async () => {
+  const r = await call('POST', '/api/auth/register', { email: 'Ada@Example.com', name: 'Ada', password: 'correct horse' });
+  assert.equal(r.status, 201);
+  assert.equal(r.data.user.email, 'ada@example.com');
+  assert.match(r.headers.get('set-cookie') || '', /cohive_session=[a-f0-9]{48}; Path=\/api;.*HttpOnly/);
+  const bad = await call('POST', '/api/auth/login', { email: 'ada@example.com', password: 'wrong' });
+  assert.equal(bad.status, 401);
+  const ok = await call('POST', '/api/auth/login', { email: 'ada@example.com', password: 'correct horse' });
+  assert.equal(ok.status, 200);
+  ada = ok.data;
+  const me = await call('GET', '/api/auth/me', undefined, ada.token);
+  assert.equal(me.data.user.name, 'Ada');
+});
+
+await aok('the cookie alone authenticates (no bearer)', async () => {
+  const me = await call('GET', '/api/auth/me', undefined, '', { Cookie: 'cohive_session=' + ada.token });
+  assert.equal(me.status, 200);
+  assert.equal(me.data.user.id, ada.user.id);
+});
+
+await aok('registered users do not auto-join the seed trip (ACL)', async () => {
+  const trips = await call('GET', '/api/trips', undefined, ada.token);
+  assert.deepEqual(trips.data.trips, []);
+  const denied = await call('GET', '/api/trips/1', undefined, ada.token);
+  assert.equal(denied.status, 403);
+});
+
+let magicTrip;
+await aok('magic link: request → dev link → verify creates the account and a starter trip', async () => {
+  const req = await call('POST', '/api/auth/magic', { email: 'bo@example.com', name: 'Bo' });
+  assert.equal(req.status, 200);
+  assert.equal(req.data.sent, false);
+  const token = new URL(req.data.devLink).searchParams.get('token');
+  assert.match(token, /^[a-f0-9]{48}$/);
+  const bad = await call('POST', '/api/auth/magic/verify', { token: 'f'.repeat(48) });
+  assert.equal(bad.status, 400);
+  const ok = await call('POST', '/api/auth/magic/verify', { token });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data.created, true);
+  bo = ok.data;
+  const again = await call('POST', '/api/auth/magic/verify', { token });
+  assert.equal(again.status, 400, 'a magic link works once');
+  const trips = await call('GET', '/api/trips', undefined, bo.token);
+  assert.equal(trips.data.trips.length, 1);
+  magicTrip = trips.data.trips[0].id;
+  const full = await call('GET', '/api/trips/' + magicTrip, undefined, bo.token);
+  assert.equal(full.data.me, bo.user.id);
+  assert.ok(full.data.spots.length > 0, 'starter trip carries the seed spots');
+});
+
+await aok('GET verify redirects into the app with the session', async () => {
+  const req = await call('POST', '/api/auth/magic', { email: 'bo@example.com' });
+  const token = new URL(req.data.devLink).searchParams.get('token');
+  const r = await call('GET', '/api/auth/magic/verify?token=' + token);
+  assert.equal(r.status, 302);
+  assert.match(r.headers.get('location'), /authed=1&token=[a-f0-9]{48}&mode=magic/);
+  assert.match(r.headers.get('set-cookie') || '', /cohive_session=/);
+});
+
+let inviteCode;
+let placeholder;
+await aok('invite: adding a member mints a single-use invite link', async () => {
+  const r = await call('POST', '/api/trips/' + magicTrip + '/members', { name: 'Ada' }, bo.token);
+  assert.equal(r.status, 201);
+  assert.match(r.data.invite.code, /^[A-HJ-NP-Z2-9]{10}$/);
+  assert.match(r.data.url, /\?invite=/);
+  inviteCode = r.data.invite.code;
+  placeholder = r.data.member.id;
+  assert.match(placeholder, /^invite-/);
+  const preview = await call('GET', '/api/invites/' + inviteCode);
+  assert.equal(preview.status, 200);
+  assert.equal(preview.data.invite.inviter, 'Bo');
+  assert.equal(preview.data.invite.memberName, 'Ada');
+  assert.equal(preview.data.invite.expired, false);
+  const missing = await call('GET', '/api/invites/ZZZZZZZZZZ');
+  assert.equal(missing.status, 404);
+});
+
+await aok('accepting binds the account to the placeholder; ledger key is stable; link is spent', async () => {
+  const anon = await call('POST', '/api/invites/' + inviteCode + '/accept', {});
+  assert.equal(anon.status, 401);
+  const r = await call('POST', '/api/invites/' + inviteCode + '/accept', {}, ada.token);
+  assert.equal(r.status, 200);
+  assert.equal(r.data.joined, true);
+  assert.equal(r.data.member.id, placeholder);
+  const trip = await call('GET', '/api/trips/' + magicTrip, undefined, ada.token);
+  assert.equal(trip.status, 200);
+  assert.equal(trip.data.me, placeholder, 'Ada acts as the placeholder member');
+  const twice = await call('POST', '/api/invites/' + inviteCode + '/accept', {}, ada.token);
+  assert.equal(twice.data.joined, false, 'already a member');
+  const third = await store.demoAuth({ provider: 'email', name: 'Cy' });
+  const spent = await call('POST', '/api/invites/' + inviteCode + '/accept', {}, third.token);
+  assert.equal(spent.status, 410);
+});
+
+await aok('open invite links admit new members up to max uses', async () => {
+  const r = await call('POST', '/api/trips/' + magicTrip + '/invites', { maxUses: 1 }, bo.token);
+  assert.equal(r.status, 201);
+  const cy = await store.demoAuth({ provider: 'email', name: 'Cy' });
+  const ok = await call('POST', '/api/invites/' + r.data.invite.code + '/accept', {}, cy.token);
+  assert.equal(ok.data.joined, true);
+  assert.equal(ok.data.member.id, cy.user.id);
+  const dee = await store.demoAuth({ provider: 'email', name: 'Dee' });
+  const full = await call('POST', '/api/invites/' + r.data.invite.code + '/accept', {}, dee.token);
+  assert.equal(full.status, 410);
+});
+
+await aok('votes, spots and scan work on the Postgres store', async () => {
+  const v = await call('POST', '/api/trips/' + magicTrip + '/votes', { spotId: 1, tier: 'must' }, bo.token);
+  assert.equal(v.status, 200);
+  assert.equal(v.data.spot.tier, 'must');
+  const s = await call('POST', '/api/trips/' + magicTrip + '/spots', { candidate: { name: '<b>Ramen</b> alley', lat: 999, lng: -999, category: 'food' }, source: 'test' }, ada.token);
+  assert.equal(s.status, 201);
+  assert.equal(s.data.spot.name, 'Ramen alley');
+  assert.ok(Math.abs(s.data.spot.lat) <= 90 && Math.abs(s.data.spot.lng) <= 180);
+  assert.ok(s.data.spot.id >= 500);
+  const scan = await call('POST', '/api/trips/' + magicTrip + '/scan', { text: 'teamLab Planets tonight' }, bo.token);
+  assert.equal(scan.status, 200);
+  assert.ok(scan.data.candidates.length >= 1);
+});
+
+await aok('money: envelope rule holds and the pot refuses uncovered bills', async () => {
+  const c = await call('POST', '/api/trips/' + magicTrip + '/fund/contributions', { amount: 100 }, ada.token);
+  assert.equal(c.status, 201);
+  assert.equal(c.data.fund[0].memberId, placeholder, 'credited to the member key, not the user id');
+  const steal = await call('POST', '/api/trips/' + magicTrip + '/fund/withdrawals', { amount: 1 }, bo.token);
+  assert.equal(steal.data.error, 'exceeds_envelope');
+  const short = await call('POST', '/api/trips/' + magicTrip + '/expenses', { label: 'Dinner', amount: 60, paidBy: 'pot' }, ada.token);
+  assert.equal(short.data.error, 'pot_shortfall');
+  const ok = await call('POST', '/api/trips/' + magicTrip + '/expenses', { label: 'Taxi', amount: 60, paidBy: 'pot', splitWith: [placeholder] }, ada.token);
+  assert.equal(ok.status, 201);
+  assert.equal(ok.data.expense.paidBy, 'pot');
+});
+
+await aok('two simultaneous withdrawals cannot both pass the envelope check', async () => {
+  // Ada has $40 left. Two $40 withdrawals race; exactly one may succeed.
+  const results = await Promise.all([
+    call('POST', '/api/trips/' + magicTrip + '/fund/withdrawals', { amount: 40 }, ada.token),
+    call('POST', '/api/trips/' + magicTrip + '/fund/withdrawals', { amount: 40 }, ada.token),
+  ]);
+  const wins = results.filter((r) => r.status === 201).length;
+  assert.equal(wins, 1, 'exactly one withdrawal wins the row lock');
+  const books = await call('GET', '/api/trips/' + magicTrip + '/fund', undefined, ada.token);
+  assert.equal(books.data.fund.filter((f) => f.kind === 'withdrawal').length, 1);
+  const empty = await call('POST', '/api/trips/' + magicTrip + '/fund/withdrawals', { amount: 0.01 }, ada.token);
+  assert.equal(empty.data.error, 'exceeds_envelope');
+  assert.equal(empty.data.withdrawable, 0, 'envelope is empty after the winning withdrawal');
+});
+
+await aok('trip limit and createTrip enforce membership counts', async () => {
+  for (let i = 0; i < 2; i++) {
+    const r = await call('POST', '/api/trips', { name: 'Trip ' + i, lat: 1, lng: 1 }, bo.token);
+    assert.equal(r.status, 201);
+  }
+  const over = await call('POST', '/api/trips', { name: 'one too many' }, bo.token);
+  assert.equal(over.status, 402);
+});
+
+await aok('account deletion revokes sessions and anonymises, ledger stays balanced', async () => {
+  const del = await call('DELETE', '/api/auth/me', undefined, ada.token);
+  assert.equal(del.status, 200);
+  const gone = await call('GET', '/api/auth/me', undefined, ada.token);
+  assert.equal(gone.status, 401);
+  const trip = await call('GET', '/api/trips/' + magicTrip, undefined, bo.token);
+  const ghost = trip.data.members.find((m) => m.id === placeholder);
+  assert.equal(ghost.name, 'Deleted member');
+  assert.ok(trip.data.fund.every((f) => f.memberId !== undefined));
+  const login = await call('POST', '/api/auth/login', { email: 'ada@example.com', password: 'correct horse' });
+  assert.equal(login.status, 401);
+});
+
+await aok('a second store instance on the same database sees everything (durability)', async () => {
+  const s2 = await createPgStore(seed, { url });
+  const user = await s2.getSessionUser(bo.token);
+  assert.equal(user.name, 'Bo');
+  const t = await s2.getTrip(magicTrip, bo.user.id);
+  assert.ok(!t.error);
+  assert.equal(t.spots.find((x) => x.id === 1).tier, 'must');
+  assert.ok(t.fund.length >= 2);
+  await s2.close();
+});
+
+await store.close();
+console.log(`\nverify:pg — ${passed} checks passed`);
