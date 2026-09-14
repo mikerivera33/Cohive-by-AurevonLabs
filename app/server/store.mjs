@@ -6,12 +6,15 @@ import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 import { clampFinite, clampLat, clampLng } from './safeJson.mjs';
 import { defaultPersistPath, loadSnapshot, saveSnapshot } from './persist.mjs';
+import { isValidAmount, potShortfalls, toCents, withdrawable } from './engine-bundle.mjs';
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14; // 14 days
 const TOKEN_RE = /^[a-f0-9]{48}$/;
 const FREE_TRIP_LIMIT = 3;
 const MAX_SPOTS_PER_TRIP = 200;
 const MAX_MEMBERS_PER_TRIP = 50;
+const MAX_EXPENSES_PER_TRIP = 500;
+const MAX_FUND_ENTRIES_PER_TRIP = 1000;
 const ALLOWED_CATEGORIES = new Set([
   'food',
   'sight',
@@ -60,8 +63,11 @@ export function createStore(seed = null, options = {}) {
   const spotsByTrip = new Map();
   /** @type {Map<string, Array<{ spotId: number, userId: string, tier: Tier, at: string }>>} */
   const votesByTrip = new Map();
+  /** @type {Map<string, Array<{ id: number, memberId: string, kind: 'contribution' | 'withdrawal', amount: number, at: string }>>} */
+  const fundByTrip = new Map();
 
   let nextSpotId = 500;
+  let nextLedgerId = 1000;
   let persistTimer = undefined;
   let persistChain = Promise.resolve();
 
@@ -90,6 +96,7 @@ export function createStore(seed = null, options = {}) {
       (s.tripSpots || []).map((sp) => ({ ...sp }))
     );
     votesByTrip.set(tripId, []);
+    fundByTrip.set(tripId, []);
     memberships.set(tripId, []);
     const maxId = Math.max(0, ...(s.tripSpots || []).map((sp) => sp.id || 0));
     nextSpotId = Math.max(nextSpotId, maxId + 1);
@@ -130,7 +137,11 @@ export function createStore(seed = null, options = {}) {
       votesByTrip: Object.fromEntries(
         [...votesByTrip.entries()].map(([k, v]) => [k, v.map((x) => ({ ...x }))])
       ),
+      fundByTrip: Object.fromEntries(
+        [...fundByTrip.entries()].map(([k, v]) => [k, v.map((x) => ({ ...x }))])
+      ),
       nextSpotId,
+      nextLedgerId,
     };
   }
 
@@ -142,6 +153,7 @@ export function createStore(seed = null, options = {}) {
     memberships.clear();
     spotsByTrip.clear();
     votesByTrip.clear();
+    fundByTrip.clear();
 
     for (const u of snap.users || []) {
       if (!u?.id || !u?.email) continue;
@@ -167,7 +179,11 @@ export function createStore(seed = null, options = {}) {
     for (const [k, v] of Object.entries(snap.votesByTrip || {})) {
       votesByTrip.set(k, Array.isArray(v) ? v : []);
     }
+    for (const [k, v] of Object.entries(snap.fundByTrip || {})) {
+      fundByTrip.set(k, Array.isArray(v) ? v : []);
+    }
     nextSpotId = Number(snap.nextSpotId) || nextSpotId;
+    nextLedgerId = Number(snap.nextLedgerId) || nextLedgerId;
     // Ensure seed trip exists even after hydrate of empty/partial file.
     if (seed && !trips.has(String(seed.trip?.id ?? 1))) bootstrapFromSeed(seed);
   }
@@ -398,7 +414,106 @@ export function createStore(seed = null, options = {}) {
       color: m.color,
       role: m.role,
     }));
-    return { trip: { ...trip }, spots, members };
+    return { trip: { ...trip }, spots, members, fund: getFund(tripId, userId).fund };
+  }
+
+  // ── Money: shared pot + cost splitting ─────────────────────
+  // The acting user is always the session user — nobody can move money for
+  // someone else, and a withdrawal may never exceed the user's own envelope.
+
+  function memberIds(tripId) {
+    return (memberships.get(String(tripId)) || []).map((m) => m.userId);
+  }
+
+  function books(tripId) {
+    const trip = trips.get(String(tripId));
+    if (!Array.isArray(trip.expenses)) trip.expenses = [];
+    const fund = fundByTrip.get(String(tripId)) || [];
+    fundByTrip.set(String(tripId), fund);
+    return { trip, fund };
+  }
+
+  function getFund(tripId, userId) {
+    const denied = requireMember(tripId, userId);
+    if (denied) return denied;
+    const { trip, fund } = books(tripId);
+    const owner = trip.ownerId || memberIds(tripId)[0];
+    return {
+      fund: fund.map((f) => ({ ...f })),
+      // Legacy seed rows carry no payer; pin them to the owner so every member
+      // computes the same balances.
+      expenses: trip.expenses.map((e) => ({ ...e, paidBy: e.paidBy ?? owner })),
+    };
+  }
+
+  function contribute(tripId, userId, amount) {
+    const denied = requireMember(tripId, userId);
+    if (denied) return denied;
+    const amt = Number(amount);
+    if (!isValidAmount(amt)) return { error: 'invalid_amount', status: 400 };
+    const { fund } = books(tripId);
+    if (fund.length >= MAX_FUND_ENTRIES_PER_TRIP) return { error: 'fund_limit', status: 400 };
+    fund.push({
+      id: nextLedgerId++,
+      memberId: userId,
+      kind: 'contribution',
+      amount: amt,
+      at: new Date().toISOString(),
+    });
+    schedulePersist();
+    return getFund(tripId, userId);
+  }
+
+  function withdraw(tripId, userId, amount) {
+    const denied = requireMember(tripId, userId);
+    if (denied) return denied;
+    const amt = Number(amount);
+    if (!isValidAmount(amt)) return { error: 'invalid_amount', status: 400 };
+    const { trip, fund } = books(tripId);
+    if (fund.length >= MAX_FUND_ENTRIES_PER_TRIP) return { error: 'fund_limit', status: 400 };
+    const owner = trip.ownerId || memberIds(tripId)[0];
+    const limit = withdrawable(userId, memberIds(tripId), trip.expenses, fund, owner);
+    if (toCents(amt) > toCents(limit)) {
+      return { error: 'exceeds_envelope', status: 400, withdrawable: limit };
+    }
+    fund.push({
+      id: nextLedgerId++,
+      memberId: userId,
+      kind: 'withdrawal',
+      amount: amt,
+      at: new Date().toISOString(),
+    });
+    schedulePersist();
+    return getFund(tripId, userId);
+  }
+
+  function addExpense(tripId, userId, input) {
+    const denied = requireMember(tripId, userId);
+    if (denied) return denied;
+    const clean = (v, max) => String(v ?? '').replace(/<[^>]*>/g, '').trim().slice(0, max);
+    const label = clean(input?.label, 80);
+    if (!label) return { error: 'invalid_label', status: 400 };
+    const amt = Number(input?.amount);
+    if (!isValidAmount(amt)) return { error: 'invalid_amount', status: 400 };
+    const category = clean(input?.category, 24).toLowerCase() || 'other';
+    const ids = memberIds(tripId);
+    const { trip, fund } = books(tripId);
+    if (trip.expenses.length >= MAX_EXPENSES_PER_TRIP) return { error: 'expense_limit', status: 400 };
+    const paidBy =
+      input?.paidBy === 'pot' ? 'pot' : ids.includes(String(input?.paidBy)) ? String(input.paidBy) : userId;
+    let splitWith = Array.isArray(input?.splitWith)
+      ? [...new Set(input.splitWith.slice(0, MAX_MEMBERS_PER_TRIP).map(String))].filter((id) => ids.includes(id))
+      : [];
+    if (!splitWith.length) splitWith = ids;
+    const expense = { id: nextLedgerId++, label, category, amount: amt, paidBy, splitWith };
+    if (paidBy === 'pot') {
+      const owner = trip.ownerId || ids[0];
+      const shortfalls = potShortfalls(expense, ids, trip.expenses, fund, owner);
+      if (shortfalls.length) return { error: 'pot_shortfall', status: 400, shortfalls };
+    }
+    trip.expenses.push(expense);
+    schedulePersist();
+    return { expense: { ...expense }, ...getFund(tripId, userId) };
   }
 
   function castVote(tripId, userId, spotId, tier) {
@@ -571,6 +686,10 @@ export function createStore(seed = null, options = {}) {
     addMember,
     addSpot,
     createTrip,
+    getFund,
+    contribute,
+    withdraw,
+    addExpense,
     isMember,
     requireMember,
     flush,
@@ -578,11 +697,14 @@ export function createStore(seed = null, options = {}) {
     FREE_TRIP_LIMIT,
     MAX_SPOTS_PER_TRIP,
     MAX_MEMBERS_PER_TRIP,
+    MAX_EXPENSES_PER_TRIP,
+    MAX_FUND_ENTRIES_PER_TRIP,
     persistPath,
     /** @internal test helpers */
     _trips: trips,
     _memberships: memberships,
     _spotsByTrip: spotsByTrip,
+    _snapshot: toSnapshot,
   };
 }
 

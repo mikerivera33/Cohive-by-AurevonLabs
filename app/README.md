@@ -2,7 +2,7 @@
 
 Trips, homes and dinners in one shared hive. Three product lines under one roof:
 
-- **Bucketlist** — trips: map, universal link import, tiered voting, itinerary studio, budget, crew
+- **Bucketlist** — trips: map, universal link import, tiered voting, itinerary studio, budget with a shared pot + cost splitting, crew
 - **Nest** — shared home hunting: mapped listings with 💍/🪴 reactions
 - **Table** — the dinner list that survives the group chat
 
@@ -61,6 +61,7 @@ run `npm run sync` after cloning.
 | Path | What it is |
 | --- | --- |
 | `src/engine/engine.ts` | The itinerary engine — day clustering, nearest-neighbour routing, real clock times, opening-hours and meal slotting, tier-aware scoring, the never-fail import scanner, `.ics` and text exports. Framework-free and dependency-free. |
+| `src/engine/ledger.ts` | Trip money — the shared pot with per-member envelopes, cent-exact equal splits, Splitwise-style balances and greedy settle-up. Bundled into the API server so the same rules run on both sides. |
 | `src/engine/seed.ts` | Demo fixtures — Tokyo trip + gazetteer, NYC listings, NYC restaurants. Swap this module for API calls; nothing else reads the constants directly. |
 | `src/store/AppStore.tsx` | All app state and the actions that mutate it, behind `useApp()`. |
 | `src/screens/` | One file per tab; the Trip tab's five sub-views live in `screens/trip/`. |
@@ -73,15 +74,17 @@ run `npm run sync` after cloning.
 
 ### Engine — `npm run verify:engine`
 
-36 property checks: every must-do gets placed at all three paces, no spot is scheduled
+46 property checks: every must-do gets placed at all three paces, no spot is scheduled
 twice, visits stay inside the trip's daily window, nothing is scheduled before it opens,
 times run strictly forward, day costs sum correctly, the scanner always resolves at least
 one candidate (including emoji-only and empty-ish input), and the `.ics`/text exports
-match the plan.
+match the plan. The ledger checks cover cent-exact splits, envelopes summing to the pot,
+withdrawals capped at what you put in, pot bills refused on any shortfall, and settle-up
+clearing every balance in ≤ n−1 transfers.
 
 ### End to end — `npm run smoke`
 
-59 checks driving a real browser through every flow: onboarding → auth → create hive →
+71 checks driving a real browser through every flow: onboarding → auth → create hive →
 invite → home → trip map → scan and add → tier voting → itinerary generation → budget →
 crew → Nest → Table → pricing → all 21 connections → theme toggle → persistence across a
 reload → replay tour → desktop bezel — plus deep flows: scanner results and list filters
@@ -128,6 +131,15 @@ listener counts, and exactly one live Leaflet map after churn.
 
 ## Product rules
 
+- **Money — pot + envelopes.** Each member's contribution sits in their own envelope; a
+  member can only take out what they put in, never anyone else's money. The pot pays a bill
+  only when every participant's envelope covers their share (otherwise it names who is short).
+  Person-paid expenses split equally (cents distributed largest-remainder) into per-member
+  balances, and "Settle up" suggests the minimal transfers; marking one paid records a
+  settlement that nets both sides. When the API is live these rules are enforced server-side
+  (`/api/trips/:id/fund`, `/fund/contributions`, `/fund/withdrawals`, `/expenses`) and the
+  acting member is always the session user.
+
 - **Free tier**: 3 hives, 3 trips; everything usable, booking and account linking gated
 - **Cohive+ $4.99/mo**: unlimited hives and trips, travel + social account linking
 - **Cohive+ Annual $33/yr** (featured): adds in-app booking — OpenTable & Resy
@@ -159,7 +171,7 @@ listener counts, and exactly one live Leaflet map after churn.
 - **Native**: `android:allowBackup="false"`; iOS ATS fully on (no exceptions);
   app id and manifests validated.
 - **CI**: `.github/workflows/ci.yml` runs audit (fails on any vulnerability),
-  typecheck+build, both engine suites, the 59-check walkthrough, the browser
+  typecheck+build, both engine suites, the 71-check walkthrough, the browser
   stress run, the axe audit, and a `cap sync` sanity check on every push/PR.
 
 ## What's persisted

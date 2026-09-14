@@ -9,6 +9,15 @@
 import assert from 'node:assert/strict';
 
 import { planTrip, scanImport, buildIcs, planAsText } from '../src/engine/engine.ts';
+import {
+  potShortfalls,
+  settleUp,
+  splitEqual,
+  summarizeLedger,
+  withdrawable,
+  isValidAmount,
+} from '../src/engine/ledger.ts';
+import type { FundEntry, LedgerExpense } from '../src/engine/ledger.ts';
 import { tripSpots, trip } from '../src/engine/seed.ts';
 import type { Pace, PlanVisit } from '../src/types.ts';
 
@@ -174,5 +183,103 @@ ok('text export lists every day', () => {
   assert.ok(txt.startsWith('Tokyo Adventure'));
   for (const d of plan.days) assert.ok(txt.includes('Day ' + d.day), 'missing day ' + d.day);
 });
+
+console.log('\nledger — pot + envelopes + splitting');
+{
+  const ids = [1, 2, 3];
+  const fund: FundEntry[] = [
+    { id: 1, memberId: 1, kind: 'contribution', amount: 200, at: '' },
+    { id: 2, memberId: 2, kind: 'contribution', amount: 150, at: '' },
+  ];
+  const legacy: LedgerExpense[] = [{ id: 1, amount: 100 }]; // no payer/split → owner, everyone
+
+  ok('splitEqual always adds up to the cent', () => {
+    for (const [amt, n] of [[100, 3], [0.01, 2], [10, 7], [1234.56, 5]] as const) {
+      const shares = splitEqual(amt, n);
+      assert.equal(shares.length, n);
+      assert.equal(Math.round(shares.reduce((a, b) => a + b, 0) * 100), Math.round(amt * 100));
+      assert.ok(Math.max(...shares) - Math.min(...shares) <= 0.01 + 1e-9);
+    }
+    assert.deepEqual(splitEqual(100, 3), [33.34, 33.33, 33.33]);
+    assert.deepEqual(splitEqual(5, 0), []);
+  });
+
+  ok('isValidAmount rejects junk, negatives, >2 decimals and huge values', () => {
+    for (const bad of [0, -1, NaN, Infinity, '5', 1.005, 1e9, null]) assert.equal(isValidAmount(bad), false, String(bad));
+    for (const good of [0.01, 5, 26.67, 999999.99]) assert.equal(isValidAmount(good), true, String(good));
+  });
+
+  ok('envelopes track each member’s own money and sum to the pot', () => {
+    const l = summarizeLedger(ids, legacy, fund, 1);
+    assert.equal(l.pot, 350);
+    assert.deepEqual(l.envelopes, { 1: 200, 2: 150, 3: 0 });
+    assert.equal(Object.values(l.envelopes).reduce((a, b) => a + b, 0), l.pot);
+  });
+
+  ok('withdrawable is capped at what you put in — never others’ money', () => {
+    assert.equal(withdrawable(1, ids, legacy, fund, 1), 200);
+    assert.equal(withdrawable(3, ids, legacy, fund, 1), 0);
+    const after = [...fund, { id: 3, memberId: 1, kind: 'withdrawal' as const, amount: 200, at: '' }];
+    assert.equal(withdrawable(1, ids, legacy, after, 1), 0);
+    assert.equal(withdrawable(2, ids, legacy, after, 1), 150);
+  });
+
+  ok('pot refuses to pay a bill any participant cannot cover', () => {
+    const dinner: LedgerExpense = { id: 9, amount: 300, paidBy: 'pot' };
+    assert.deepEqual(potShortfalls(dinner, ids, legacy, fund, 1), [{ memberId: 3, short: 100 }]);
+    const twoWay: LedgerExpense = { id: 9, amount: 300, paidBy: 'pot', splitWith: [1, 2] };
+    assert.deepEqual(potShortfalls(twoWay, ids, legacy, fund, 1), []);
+    const tooBig: LedgerExpense = { id: 9, amount: 500, paidBy: 'pot', splitWith: [1, 2] };
+    assert.deepEqual(potShortfalls(tooBig, ids, legacy, fund, 1), [{ memberId: 1, short: 50 }, { memberId: 2, short: 100 }]);
+  });
+
+  ok('a pot-paid bill charges each participant’s envelope and creates no IOUs', () => {
+    const l = summarizeLedger(ids, [{ id: 9, amount: 300, paidBy: 'pot', splitWith: [1, 2] }], fund, 1);
+    assert.deepEqual(l.envelopes, { 1: 50, 2: 0, 3: 0 });
+    assert.equal(l.pot, 50);
+    assert.deepEqual(l.balances, { 1: 0, 2: 0, 3: 0 });
+    assert.deepEqual(l.transfers, []);
+  });
+
+  ok('legacy rows default to the owner paying, split with everyone', () => {
+    const l = summarizeLedger(ids, legacy, [], 1);
+    assert.deepEqual(l.balances, { 1: 66.66, 2: -33.33, 3: -33.33 });
+  });
+
+  ok('balances net to zero and settle-up clears them in ≤ n−1 transfers', () => {
+    const exps: LedgerExpense[] = [
+      { id: 1, amount: 90, paidBy: 1 },
+      { id: 2, amount: 45.5, paidBy: 2, splitWith: [2, 3] },
+      { id: 3, amount: 12.34, paidBy: 3, splitWith: [1] },
+    ];
+    const l = summarizeLedger(ids, exps, [], 1);
+    const net = Object.values(l.balances).reduce((a, b) => a + b, 0);
+    assert.ok(Math.abs(net) < 1e-9, 'balances must net to zero');
+    assert.ok(l.transfers.length <= ids.length - 1);
+    const bal = { ...l.balances };
+    for (const t of l.transfers) {
+      bal[String(t.from)] = Math.round((bal[String(t.from)] + t.amount) * 100) / 100;
+      bal[String(t.to)] = Math.round((bal[String(t.to)] - t.amount) * 100) / 100;
+    }
+    for (const v of Object.values(bal)) assert.equal(v, 0);
+  });
+
+  ok('recording a settlement as a transfer expense nets both sides', () => {
+    const base: LedgerExpense[] = [{ id: 1, amount: 90, paidBy: 1 }];
+    const [t] = summarizeLedger(ids, base, [], 1).transfers;
+    const settled = [...base, { id: 2, amount: t.amount, paidBy: t.from, splitWith: [t.to] }];
+    const l = summarizeLedger(ids, settled, [], 1);
+    assert.equal(l.balances[String(t.from)], 0);
+    assert.equal(l.transfers.length, 1);
+  });
+
+  ok('unknown members and empty books are harmless', () => {
+    const l = summarizeLedger(ids, [{ id: 1, amount: 50, paidBy: 99, splitWith: [98] }], [{ id: 1, memberId: 42, kind: 'contribution', amount: 5, at: '' }], 1);
+    assert.equal(l.pot, 0);
+    assert.deepEqual(l.transfers, []);
+    assert.deepEqual(settleUp({}), []);
+    assert.deepEqual(summarizeLedger([], [], [], 1).envelopes, {});
+  });
+}
 
 console.log(`\n${checks} checks passed.\n`);

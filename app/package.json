@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "build:server": "esbuild src/engine/engine.ts --bundle --platform=node --format=esm --outfile=server/engine-bundle.mjs --log-level=error",
+    "build:server": "esbuild src/engine/server-entry.ts --bundle --platform=node --format=esm --outfile=server/engine-bundle.mjs --log-level=error",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "verify:engine": "esbuild scripts/verify-engine.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/verify-engine.mjs --log-level=error && node node_modules/.cache/verify-engine.mjs",

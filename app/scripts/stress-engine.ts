@@ -10,6 +10,8 @@ import assert from 'node:assert/strict';
 
 import { buildIcs, planAsText, planTrip, scanImport } from '../src/engine/engine.ts';
 import { trip as seedTrip } from '../src/engine/seed.ts';
+import { potShortfalls, summarizeLedger, toCents, withdrawable } from '../src/engine/ledger.ts';
+import type { FundEntry, LedgerExpense } from '../src/engine/ledger.ts';
 import type { Category, Pace, PlanVisit, Spot, Tier, TripPlan } from '../src/types.ts';
 
 /* Mulberry32 — tiny seeded RNG so every failure is reproducible. */
@@ -293,5 +295,55 @@ ok('poisoned coordinates never yield NaN distances or plan fields', () => {
   }
 });
 
+console.log('\nledger fuzz — 200 random money histories (seeded)');
+ok('envelopes never go negative, always sum to the pot, balances net to zero', () => {
+  let ops = 0;
+  let refusedWithdrawals = 0;
+  let refusedPotBills = 0;
+  for (let run = 0; run < 200; run++) {
+    const n = randInt(2, 6);
+    const ids = Array.from({ length: n }, (_, i) => i + 1);
+    const fund: FundEntry[] = [];
+    const exps: LedgerExpense[] = [];
+    let id = 1;
+    for (let step = 0; step < randInt(5, 40); step++) {
+      const who = ids[randInt(0, n - 1)];
+      const amount = Math.round(rand() * 50_000) / 100 + 0.01;
+      const roll = rand();
+      if (roll < 0.35) {
+        fund.push({ id: id++, memberId: who, kind: 'contribution', amount, at: '' });
+      } else if (roll < 0.6) {
+        // Withdraw exactly what the rule allows, or try to overdraw — which must be refused.
+        const limit = withdrawable(who, ids, exps, fund, 1);
+        const want = rand() < 0.5 ? limit : amount;
+        if (want > 0 && toCents(want) <= toCents(limit)) {
+          fund.push({ id: id++, memberId: who, kind: 'withdrawal', amount: want, at: '' });
+        } else refusedWithdrawals++;
+      } else {
+        const splitWith = ids.filter(() => rand() < 0.7);
+        const paidBy = rand() < 0.4 ? ('pot' as const) : who;
+        const e: LedgerExpense = { id: id++, amount, paidBy, splitWith };
+        if (paidBy === 'pot' && potShortfalls(e, ids, exps, fund, 1).length) {
+          refusedPotBills++;
+          continue;
+        }
+        exps.push(e);
+      }
+      ops++;
+      const l = summarizeLedger(ids, exps, fund, 1);
+      const envSum = Object.values(l.envelopes).reduce((a, b) => a + toCents(b), 0);
+      assert.equal(envSum, toCents(l.pot), 'Σ envelopes must equal the pot');
+      for (const [m, v] of Object.entries(l.envelopes)) {
+        assert.ok(v >= 0, `envelope of ${m} went negative (${v})`);
+        assert.ok(toCents(withdrawable(m, ids, exps, fund, 1)) <= toCents(v));
+      }
+      assert.equal(Object.values(l.balances).reduce((a, b) => a + toCents(b), 0), 0);
+      assert.ok(l.transfers.length <= n - 1);
+      assert.ok(l.transfers.every((t) => t.amount > 0 && String(t.from) !== String(t.to)));
+    }
+  }
+  console.log(`    ${ops} ops · ${refusedWithdrawals} overdraws refused · ${refusedPotBills} short pot bills refused`);
+  assert.ok(refusedWithdrawals > 0 && refusedPotBills > 0, 'fuzz should exercise both refusals');
+});
 
 console.log(`\n${checks} stress checks passed.\n`);

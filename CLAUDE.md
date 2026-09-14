@@ -17,9 +17,9 @@ A React 18 + TypeScript + Vite mobile app, Capacitor-ready for iOS/Android.
 npm install
 npm run dev            # http://localhost:5173
 npm run build          # tsc --noEmit + vite build
-npm run verify:engine  # 36 engine property checks
+npm run verify:engine  # 46 engine property checks (itinerary + money ledger)
 npm run stress:engine  # seeded fuzz: 300 trips + 2,000 scanner inputs
-npm run smoke          # 59-check browser walkthrough (needs Playwright — see app/README.md)
+npm run smoke          # 71-check browser walkthrough (needs Playwright — see app/README.md)
 npm run stress         # browser endurance: heap/node/listener tracking, floods, spam
 npm run a11y           # axe audit, all screens, both themes — must stay clean
 ```
@@ -40,6 +40,11 @@ CI (`.github/workflows/ci.yml`) runs all of the above plus `npm audit`
   (`mikerivera33/rhyme-plus`, branch `v2-universal-import`); keep its scheduling
   maths in sync with any upstream fixes. Seed/fixture data lives only in
   `app/src/engine/seed.ts` — swap that module when a backend lands.
+- **Money**: `app/src/engine/ledger.ts` is the single source of truth for the shared pot
+  and cost splitting (bundled into the server via `src/engine/server-entry.ts`). Invariants:
+  a member withdraws at most their own envelope, the pot pays a bill only when every share
+  is covered, Σ envelopes === pot, balances net to zero. Keep `verify:engine`, the ledger
+  fuzz in `stress:engine` and the money section of `verify:api` green when touching it.
 - **Product rules**: Free = 3 hives / 3 trips, booking + account linking gated;
   Cohive+ $4.99/mo unlocks the 21 account connections; Annual $33/yr (featured)
   adds in-app booking; Platinum $129 lifetime. Any paid plan generates a

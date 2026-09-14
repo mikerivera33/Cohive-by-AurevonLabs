@@ -7,6 +7,7 @@
  * backend lands; nothing else in the app reads these constants directly.
  */
 import type {
+  FundEntry,
   ActivityItem,
   Category,
   Listing,
@@ -136,6 +137,12 @@ export const members: Member[] = [
   { id: 1, name: 'You', color: '#4EB4FF' },
   { id: 2, name: 'Maya', color: '#A78BFA' },
   { id: 3, name: 'Ben', color: '#34D399' },
+];
+
+/** Demo pot — You and Maya have chipped in; Ben hasn't yet. */
+export const fund: FundEntry[] = [
+  { id: 1, memberId: 1, kind: 'contribution', amount: 200, at: '2026-08-20T10:00:00Z' },
+  { id: 2, memberId: 2, kind: 'contribution', amount: 150, at: '2026-08-21T09:30:00Z' },
 ];
 
 export const activity: ActivityItem[] = [

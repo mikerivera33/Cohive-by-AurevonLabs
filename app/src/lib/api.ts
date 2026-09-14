@@ -3,17 +3,20 @@
  * Session token is persisted via the validated storage helpers.
  */
 import { isSessionToken, load, save } from './storage';
-import type { Member, ScanCandidate, ScanResult, Spot, Tier } from '../types';
+import type { Expense, FundEntry, Member, MemberId, Payer, ScanCandidate, ScanResult, Spot, Tier } from '../types';
 
 const TOKEN_KEY = 'apiToken';
 
 export class ApiError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string) {
+  /** Extra fields the server sent with the error (e.g. `shortfalls`, `withdrawable`). */
+  data: Record<string, unknown>;
+  constructor(status: number, code: string, data: Record<string, unknown> = {}) {
     super(code);
     this.status = status;
     this.code = code;
+    this.data = data;
   }
 }
 
@@ -52,7 +55,7 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (!res.ok) {
-    throw new ApiError(res.status, data.error || 'request_failed');
+    throw new ApiError(res.status, data.error || 'request_failed', data as Record<string, unknown>);
   }
   return data;
 }
@@ -136,10 +139,48 @@ export async function apiListTrips() {
 
 export async function apiGetTrip(tripId: string) {
   return apiFetch<{
-    trip: { id: string; name: string; city: string; lat: number; lng: number };
+    trip: { id: string; name: string; city: string; lat: number; lng: number; expenses?: Expense[] };
     spots: Spot[];
     members: Member[];
+    fund?: FundEntry[];
   }>('/api/trips/' + encodeURIComponent(tripId));
+}
+
+/** The trip's books after a money action — the client replaces its copy wholesale. */
+export interface FundPayload {
+  fund: FundEntry[];
+  expenses: Expense[];
+}
+
+const fundPath = (tripId: string, rest: string) => '/api/trips/' + encodeURIComponent(tripId) + rest;
+
+export async function apiContribute(tripId: string, amount: number) {
+  return apiFetch<FundPayload>(fundPath(tripId, '/fund/contributions'), {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  });
+}
+
+export async function apiWithdraw(tripId: string, amount: number) {
+  return apiFetch<FundPayload>(fundPath(tripId, '/fund/withdrawals'), {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  });
+}
+
+export interface ExpenseInput {
+  label: string;
+  amount: number;
+  category?: string;
+  paidBy?: Payer;
+  splitWith?: MemberId[];
+}
+
+export async function apiAddExpense(tripId: string, input: ExpenseInput) {
+  return apiFetch<FundPayload & { expense: Expense }>(fundPath(tripId, '/expenses'), {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export async function apiCastVote(tripId: string, spotId: number, tier: Tier | null) {

@@ -35,11 +35,18 @@ export interface Spot extends LatLng {
   skipped?: boolean;
 }
 
+export type { FundEntry, MemberId, Payer } from './engine/ledger';
+import type { MemberId, Payer } from './engine/ledger';
+
 export interface Expense {
   id: number;
   label: string;
   category: string;
   amount: number;
+  /** Member who covered it, or the shared pot. Legacy rows default to the current user. */
+  paidBy?: Payer;
+  /** Members sharing the cost. Legacy rows default to everyone. */
+  splitWith?: MemberId[];
 }
 
 export interface Trip extends LatLng {
@@ -58,7 +65,7 @@ export interface Trip extends LatLng {
 }
 
 export interface Member {
-  id: number;
+  id: MemberId;
   name: string;
   color: string;
 }

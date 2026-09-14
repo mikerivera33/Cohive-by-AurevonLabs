@@ -201,6 +201,57 @@ await check('budget tab: logging an expense updates the list', async () => {
   await has('Expense logged');
   await has('izakaya night');
 });
+await check('budget tab: split ledger shows who owes whom', async () => {
+  await has('Settle up');
+  await has('Maya pays You');
+  await has('551.67');
+  await has('You paid · 3 ways');
+});
+await check('budget tab: pot shows envelopes and takes a contribution', async () => {
+  await has('Group pot');
+  await has('yours: $200');
+  await page.getByLabel('Pot amount').fill('50');
+  await tap('Add to pot');
+  await page.waitForTimeout(300);
+  await has('Added $50 to the pot');
+  await has('yours: $250');
+});
+await check('budget tab: taking out more than you put in is refused', async () => {
+  await page.getByLabel('Pot amount').fill('999');
+  await tap('Take out');
+  await page.waitForTimeout(300);
+  await has('only what you put in');
+  await has('yours: $250');
+});
+await check('budget tab: taking out your own money works', async () => {
+  await page.getByLabel('Pot amount').fill('50');
+  await tap('Take out');
+  await page.waitForTimeout(300);
+  await has('Took $50 out of the pot');
+  await has('yours: $200');
+});
+await check('budget tab: pot refuses a bill someone has not funded', async () => {
+  await page.getByPlaceholder('What — e.g. izakaya night').fill('group dinner');
+  await page.getByLabel('Expense amount').fill('300');
+  await page.getByLabel('Paid by').selectOption('pot');
+  await tap('Add expense');
+  await page.waitForTimeout(300);
+  await has('Ben is $100 short');
+});
+await check('budget tab: pot pays a covered bill and charges the envelopes', async () => {
+  await page.getByRole('button', { name: 'Ben', exact: true }).click(); // drop Ben from the split
+  await tap('Add expense');
+  await page.waitForTimeout(300);
+  await has('Expense logged');
+  await has('Pot paid · 2 ways');
+  await has('yours: $50');
+});
+await check('budget tab: marking a transfer paid settles it', async () => {
+  await page.getByRole('button', { name: /Mark Maya paid You/ }).click();
+  await page.waitForTimeout(300);
+  await has('Marked as settled');
+  await has('Ben pays You');
+});
 await check('budget tab: booking is locked on Free and opens pricing', async () => {
   await page.getByRole('button', { name: /Flights/ }).click();
   await page.waitForTimeout(500);

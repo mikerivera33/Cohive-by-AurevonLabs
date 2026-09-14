@@ -323,4 +323,107 @@ await aok('file-backed store survives reload', async () => {
   }
 });
 
+console.log('\nmoney — pot + splitting');
+{
+  const s = createStore(seed);
+  const m = createApi({ store: s, scanImport });
+  const call = async (method, path, body, token) => {
+    const res = await m.handle(
+      new Request('http://x' + path, {
+        method,
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: body ? JSON.stringify(body) : undefined,
+      })
+    );
+    return { status: res.status, data: await res.json().catch(() => ({})) };
+  };
+  const a = s.demoAuth({ provider: 'email', name: 'Ada' });
+  const b = s.demoAuth({ provider: 'email', name: 'Bo' });
+
+  await aok('non-members cannot touch the pot', async () => {
+    assert.equal(s.contribute('1', 'nobody', 10).error, 'forbidden');
+    assert.equal(s.withdraw('1', 'nobody', 10).error, 'forbidden');
+    assert.equal(s.addExpense('1', 'nobody', { label: 'x', amount: 1 }).error, 'forbidden');
+    const r = await call('POST', '/api/trips/1/fund/contributions', { amount: 10 }, 'deadbeef'.repeat(6));
+    assert.equal(r.status, 401);
+  });
+
+  await aok('contribution is credited to the session user only', async () => {
+    const r = await call('POST', '/api/trips/1/fund/contributions', { amount: 100, memberId: b.user.id }, a.token);
+    assert.equal(r.status, 201);
+    assert.equal(r.data.fund.length, 1);
+    assert.equal(r.data.fund[0].memberId, a.user.id);
+    assert.equal(r.data.fund[0].amount, 100);
+  });
+
+  await aok('amounts are validated (junk, negative, sub-cent, huge)', async () => {
+    for (const amount of [0, -5, 'abc', 1.005, 1e12, null]) {
+      const r = await call('POST', '/api/trips/1/fund/contributions', { amount }, a.token);
+      assert.equal(r.status, 400, String(amount));
+      assert.equal(r.data.error, 'invalid_amount');
+    }
+  });
+
+  await aok('you can only take out what you put in', async () => {
+    const steal = await call('POST', '/api/trips/1/fund/withdrawals', { amount: 50 }, b.token);
+    assert.equal(steal.status, 400);
+    assert.equal(steal.data.error, 'exceeds_envelope');
+    assert.equal(steal.data.withdrawable, 0);
+    const over = await call('POST', '/api/trips/1/fund/withdrawals', { amount: 100.01 }, a.token);
+    assert.equal(over.data.error, 'exceeds_envelope');
+    assert.equal(over.data.withdrawable, 100);
+    const ok1 = await call('POST', '/api/trips/1/fund/withdrawals', { amount: 40 }, a.token);
+    assert.equal(ok1.status, 201);
+    assert.equal(ok1.data.fund.length, 2);
+  });
+
+  await aok('pot refuses a bill a participant has not funded', async () => {
+    const r = await call('POST', '/api/trips/1/expenses', { label: 'Dinner', amount: 60, paidBy: 'pot' }, a.token);
+    assert.equal(r.status, 400);
+    assert.equal(r.data.error, 'pot_shortfall');
+    assert.deepEqual(r.data.shortfalls, [{ memberId: b.user.id, short: 30 }]);
+  });
+
+  await aok('pot pays a covered bill and charges only the participants', async () => {
+    const r = await call('POST', '/api/trips/1/expenses', { label: 'Taxi', amount: 60, paidBy: 'pot', splitWith: [a.user.id] }, a.token);
+    assert.equal(r.status, 201);
+    assert.equal(r.data.expense.paidBy, 'pot');
+    assert.deepEqual(r.data.expense.splitWith, [a.user.id]);
+    const left = await call('POST', '/api/trips/1/fund/withdrawals', { amount: 0.01 }, a.token);
+    assert.equal(left.data.error, 'exceeds_envelope');
+    assert.equal(left.data.withdrawable, 0);
+  });
+
+  await aok('split expenses sanitize payer/participants and cap label length', async () => {
+    const r = await call('POST', '/api/trips/1/expenses', { label: 'x'.repeat(500), amount: 30, paidBy: 'ghost', splitWith: ['ghost', b.user.id, b.user.id], category: '<b>food</b>' }, a.token);
+    assert.equal(r.status, 201);
+    assert.equal(r.data.expense.label.length, 80);
+    assert.equal(r.data.expense.paidBy, a.user.id);
+    assert.deepEqual(r.data.expense.splitWith, [b.user.id]);
+    assert.equal(r.data.expense.category, 'food');
+    const bad = await call('POST', '/api/trips/1/expenses', { label: '   ', amount: 30 }, a.token);
+    assert.equal(bad.data.error, 'invalid_label');
+  });
+
+  await aok('GET /fund returns the books with legacy rows pinned to the owner', async () => {
+    const r = await call('GET', '/api/trips/1/fund', undefined, b.token);
+    assert.equal(r.status, 200);
+    assert.equal(r.data.fund.length, 2);
+    const legacy = r.data.expenses.find((e) => e.id === 1);
+    assert.equal(legacy.paidBy, a.user.id);
+    const trip = await call('GET', '/api/trips/1', undefined, b.token);
+    assert.equal(trip.data.fund.length, 2);
+  });
+
+  await aok('the pot survives a snapshot round-trip', async () => {
+    const snap = JSON.parse(JSON.stringify(s._snapshot()));
+    const s2 = createStore(seed);
+    s2.hydrate(snap);
+    assert.equal(s2.getFund('1', a.user.id).fund.length, 2);
+    assert.equal(s2.withdraw('1', a.user.id, 1).error, 'exceeds_envelope');
+    const c = s2.contribute('1', b.user.id, 5);
+    assert.ok(c.fund.every((f, i, arr) => arr.findIndex((x) => x.id === f.id) === i), 'ledger ids stay unique after hydrate');
+  });
+}
+
 console.log(`\nverify:api — ${passed} checks passed`);

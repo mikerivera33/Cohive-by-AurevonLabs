@@ -33,7 +33,7 @@ jobs:
       - name: Typecheck + production build
         run: npm run build
 
-      - name: Engine property checks (36)
+      - name: Engine property checks (46)
         run: npm run verify:engine
 
       - name: API auth, ACL, sanitize, rate limits
@@ -47,7 +47,7 @@ jobs:
           npm i --no-save playwright@1.56.1
           npx playwright install --with-deps chromium
 
-      - name: Browser walkthrough (59 checks)
+      - name: Browser walkthrough (71 checks)
         run: |
           npx vite preview --port 4173 &
           npx wait-on http://127.0.0.1:4173 --timeout 30000 2>/dev/null \
