@@ -429,7 +429,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const key = memberId === undefined ? '*' : String(memberId);
       if (inviteLinks[key]) return inviteLinks[key];
       try {
-        const { url } = await apiCreateInvite(tripId, memberId === undefined ? {} : { memberId });
+        // A hive-wide link should admit the whole crew, not just the first tap.
+        const { url } = await apiCreateInvite(tripId, memberId === undefined ? { maxUses: 50 } : { memberId });
         setInviteLinks((prev) => ({ ...prev, [key]: url }));
         return url;
       } catch (e) {

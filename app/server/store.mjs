@@ -23,7 +23,7 @@ import {
   tripFromBody,
 } from './rules.mjs';
 
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14; // 14 days
+const SESSION_TTL_MS = LIMITS.SESSION_TTL_MS; // 30 days — matches the Postgres store and the cookie Max-Age
 const TOKEN_RE = /^[a-f0-9]{48}$/;
 const FREE_TRIP_LIMIT = 3;
 const MAX_SPOTS_PER_TRIP = 200;
