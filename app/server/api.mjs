@@ -165,6 +165,11 @@ export function createApi(deps = {}) {
             name: 'You',
             verified: false,
           });
+      if (result.error) {
+        return redirect(
+          `${cfg.publicBase}/?start=onboarding&error=${encodeURIComponent(result.error)}`
+        );
+      }
       const dest = `${appHome}&token=${encodeURIComponent(result.token)}&mode=${encodeURIComponent(result.mode)}`;
       return redirect(dest);
     }

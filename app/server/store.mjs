@@ -110,6 +110,7 @@ export function createStore(seed = null, options = {}) {
         salt: u.salt,
         hash: u.hash,
         provider: u.provider || null,
+        oauthVerified: u.oauthVerified === true,
         createdAt: u.createdAt,
       });
     }
@@ -322,9 +323,19 @@ export function createStore(seed = null, options = {}) {
       users.set(mail, user);
       users.set(user.id, user);
     } else {
+      // Do not attach a real Google/Apple identity to an account that only
+      // claimed the email via password register or demo. Register does not
+      // verify email, so that merge is account takeover: the squatter keeps
+      // password/demo access and sees everything the victim creates after
+      // signing in with OAuth.
+      const alreadyThisProvider = user.provider === p;
+      const alreadyVerifiedOauth = user.oauthVerified === true;
+      if (!alreadyThisProvider && !alreadyVerifiedOauth) {
+        return { error: 'email_conflict', status: 409 };
+      }
       user.provider = p;
       if (display && display !== 'You') user.name = display;
-      user.oauthVerified = Boolean(verified);
+      if (verified) user.oauthVerified = true;
     }
     const token = createSession(user.id);
     ensureDemoMembership(user);
