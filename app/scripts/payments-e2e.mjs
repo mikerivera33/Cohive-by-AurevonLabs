@@ -11,12 +11,17 @@
  *     money control, ≥16px inputs (Safari does not zoom), CSP present
  *   • persistence policy: no money state in localStorage, plan tier survives reload
  *
+ * Runs on WebKit (the engine every iOS browser and WKWebView use) by default;
+ * PW_BROWSER=chromium falls back to Chromium with iOS emulation.
+ *
  * Run like the smoke suite:  PLAYWRIGHT=… node scripts/payments-e2e.mjs http://127.0.0.1:4173
  */
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { chromium, devices } = require(process.env.PLAYWRIGHT || 'playwright');
+const pw = require(process.env.PLAYWRIGHT || 'playwright');
+const { devices } = pw;
+const ENGINE = process.env.PW_BROWSER || 'webkit';
 
 const BASE = process.argv[2] || 'http://localhost:4173';
 const errors = [];
@@ -34,13 +39,18 @@ const check = async (label, fn) => {
   }
 };
 
-const browser = await chromium.launch({
-  ...(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}),
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
-});
-// iPhone 14 Pro-class viewport with touch; Chromium engine (WebKit is not installed here).
+const browser =
+  ENGINE === 'webkit'
+    ? await pw.webkit.launch()
+    : await pw.chromium.launch({
+        ...(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}),
+        args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+      });
+console.log(`engine: ${ENGINE} ${browser.version()}`);
+// iPhone 14 Pro descriptor: 393×852 @3x, Mobile Safari UA, touch.
 const iphone = devices['iPhone 14 Pro'] || { viewport: { width: 393, height: 852 }, deviceScaleFactor: 3 };
-const ctx = await browser.newContext({ ...iphone, isMobile: true, hasTouch: true, defaultBrowserType: undefined });
+const { defaultBrowserType: _ignored, ...device } = iphone;
+const ctx = await browser.newContext({ ...device, isMobile: true, hasTouch: true });
 const page = await ctx.newPage();
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));

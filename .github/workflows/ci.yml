@@ -42,10 +42,10 @@ jobs:
       - name: Engine stress + fuzz (seeded)
         run: npm run stress:engine
 
-      - name: Install Playwright Chromium
+      - name: Install Playwright Chromium + WebKit
         run: |
           npm i --no-save playwright@1.56.1
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
 
       - name: Browser walkthrough (71 checks)
         run: |
@@ -54,7 +54,7 @@ jobs:
             || for i in $(seq 1 30); do curl -sf http://127.0.0.1:4173 >/dev/null && break || sleep 1; done
           npm run smoke -- http://127.0.0.1:4173
 
-      - name: Payments end-to-end on an iPhone viewport (21 checks)
+      - name: Payments end-to-end on WebKit / iPhone viewport (21 checks)
         run: npm run e2e:payments -- http://127.0.0.1:4173
 
       - name: Browser stress + endurance (13 checks)
@@ -65,3 +65,36 @@ jobs:
 
       - name: Capacitor sync sanity
         run: npx cap sync
+
+  ios:
+    # Real iOS toolchain: CocoaPods resolves the Capacitor pods and Xcode
+    # compiles the app for the simulator (no signing) — the check the Linux
+    # job cannot do.
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Production build
+        run: npm run build
+
+      - name: Capacitor sync iOS (runs pod install)
+        run: npx cap sync ios
+
+      - name: Xcode build for iOS Simulator
+        run: |
+          xcodebuild -workspace ios/App/App.xcworkspace -scheme App -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGN_IDENTITY= build | tail -40
+          test "${PIPESTATUS[0]}" -eq 0
