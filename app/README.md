@@ -105,6 +105,14 @@ PLAYWRIGHT=$(npm root -g)/playwright npm run smoke -- http://127.0.0.1:4173
 that is unreachable the tile images don't paint, so the map assertions check Leaflet
 initialisation and the locally-rendered marker pins rather than loaded tiles.
 
+### Payments — `npm run e2e:payments`
+
+21 checks on an iPhone-sized touch viewport covering every money surface: the group pot
+(contribute, refused overdraw, own-money withdrawal, refused short pot bill, covered pot
+bill, settle-up), subscription tiers and the referral code, the booking gate, and the
+persistence policy. Each screen is also held to iOS rules — `viewport-fit=cover`, no
+horizontal scroll, ≥44pt tap targets on every control, ≥16px inputs so Safari never zooms.
+
 ### Stress + fuzz — `npm run stress:engine` and `npm run stress`
 
 `stress:engine` fuzzes the engine with a seeded RNG: 300 randomized trips

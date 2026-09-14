@@ -54,6 +54,9 @@ jobs:
             || for i in $(seq 1 30); do curl -sf http://127.0.0.1:4173 >/dev/null && break || sleep 1; done
           npm run smoke -- http://127.0.0.1:4173
 
+      - name: Payments end-to-end on an iPhone viewport (21 checks)
+        run: npm run e2e:payments -- http://127.0.0.1:4173
+
       - name: Browser stress + endurance (13 checks)
         run: npm run stress -- http://127.0.0.1:4173
 
