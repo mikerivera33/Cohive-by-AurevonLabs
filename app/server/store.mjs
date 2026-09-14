@@ -20,9 +20,14 @@ import {
   REACTIONS,
   TIERS,
   TOKEN_RE,
+  REFERRAL_CODE_RE,
+  capsFor,
   cleanText,
+  entitlementFromInput,
   expenseFromInput,
+  featuresFor,
   hiveFromBody,
+  newReferralCode,
   inviteExhausted,
   listingFromInput,
   newId,
@@ -76,7 +81,9 @@ export function createStore(seed = null, options = {}) {
   const nestByHive = new Map(); // hiveId → listings[]
   const tableByHive = new Map(); // hiveId → restaurants[]
   const invites = new Map(); // code → invite (hiveId)
-  const magicLinks = new Map(); // sha256(token) → { email, name, expiresAt, usedAt }
+  const magicLinks = new Map(); // sha256(token) → { email, name, ref, expiresAt, usedAt }
+  const entitlements = new Map(); // userId → { tier, source, expiresAt, updatedAt }
+  const billingEvents = new Set(); // provider event ids already applied
 
   let nextSpotId = 500;
   let nextLedgerId = 1000;
@@ -136,6 +143,8 @@ export function createStore(seed = null, options = {}) {
       nestByHive: mapOfArrays(nestByHive),
       tableByHive: mapOfArrays(tableByHive),
       invites: [...invites.values()].map((x) => ({ ...x })),
+      entitlements: [...entitlements.entries()].map(([userId, e]) => ({ userId, ...e })),
+      billingEvents: [...billingEvents],
       magicLinks: [...magicLinks.entries()].map(([hash, m]) => ({ hash, ...m })),
       nextSpotId,
       nextLedgerId,
@@ -145,7 +154,7 @@ export function createStore(seed = null, options = {}) {
 
   function hydrate(snap) {
     if (!snap) return;
-    for (const m of [users, sessions, hives, memberships, trips, spotsByTrip, votesByTrip, fundByTrip, nestByHive, tableByHive, invites, magicLinks]) m.clear();
+    for (const m of [users, sessions, hives, memberships, trips, spotsByTrip, votesByTrip, fundByTrip, nestByHive, tableByHive, invites, magicLinks, entitlements, billingEvents]) m.clear();
 
     for (const u of snap.users || []) {
       if (!u?.id || !u?.email) continue;
@@ -175,7 +184,9 @@ export function createStore(seed = null, options = {}) {
       for (const [k, v] of Object.entries(snap[name] || {})) m.set(k, Array.isArray(v) ? v : []);
     }
     for (const i of snap.invites || []) if (i?.code) invites.set(i.code, { ...i, hiveId: String(i.hiveId || i.tripId) });
-    for (const m of snap.magicLinks || []) if (m?.hash) magicLinks.set(m.hash, { email: m.email, name: m.name, expiresAt: m.expiresAt, usedAt: m.usedAt ?? null });
+    for (const m of snap.magicLinks || []) if (m?.hash) magicLinks.set(m.hash, { email: m.email, name: m.name, ref: m.ref || null, expiresAt: m.expiresAt, usedAt: m.usedAt ?? null });
+    for (const e of snap.entitlements || []) if (e?.userId) entitlements.set(e.userId, { tier: e.tier, source: e.source, expiresAt: e.expiresAt ?? null, updatedAt: e.updatedAt });
+    for (const id of snap.billingEvents || []) billingEvents.add(id);
     nextSpotId = Number(snap.nextSpotId) || nextSpotId;
     nextLedgerId = Number(snap.nextLedgerId) || nextLedgerId;
     nextItemId = Number(snap.nextItemId) || nextItemId;
@@ -239,13 +250,21 @@ export function createStore(seed = null, options = {}) {
     return user;
   }
 
-  function register({ email, name, password }) {
+  /** The user who owns `code`, or null. Self-referrals are rejected by the caller. */
+  function referrerFor(code) {
+    const c = String(code || '').trim().toUpperCase();
+    if (!REFERRAL_CODE_RE.test(c)) return null;
+    for (const u of users.values()) if (u.referralCode === c && !u.deletedAt) return u;
+    return null;
+  }
+
+  function register({ email, name, password, ref }) {
     const norm = normalizeEmail(email);
     if (!norm) return err('invalid_email', 400);
     if (users.has(norm)) return err('email_taken', 409);
     const pw = String(password || '');
     if (pw.length < 8 || pw.length > 200) return err('weak_password', 400);
-    const user = insertUser({ id: id(), email: norm, name: cleanText(name || norm.split('@')[0], 64) || 'You', ...hashPassword(pw) });
+    const user = insertUser({ id: id(), email: norm, name: cleanText(name || norm.split('@')[0], 64) || 'You', ...hashPassword(pw), referredBy: referrerFor(ref)?.id || null });
     // Register/login never auto-join the seed hive — membership is the ACL boundary.
     const token = createSession(user.id);
     return { user: publicUser(user), token };
@@ -258,7 +277,7 @@ export function createStore(seed = null, options = {}) {
   }
 
   /** Demo / provisional onboarding providers — a real session that joins the seed hive. */
-  function demoAuth({ provider, name, contact }) {
+  function demoAuth({ provider, name, contact, ref }) {
     const p = String(provider || 'email');
     if (!['apple', 'google', 'email', 'phone'].includes(p)) return err('invalid_provider', 400);
     const display = cleanText(name || 'You', 64) || 'You';
@@ -268,7 +287,7 @@ export function createStore(seed = null, options = {}) {
     else if (p === 'phone' && rawContact) email = `phone-${rawContact.replace(/[^\d+]/g, '').slice(0, 20) || id().slice(0, 8)}@cohive.local`;
     else email = `demo-${p}-${id().slice(0, 8)}@cohive.local`;
     let user = users.get(email);
-    if (!user) user = insertUser({ id: id(), email, name: display, ...hashPassword(newToken()), provider: p, contact: rawContact || undefined });
+    if (!user) user = insertUser({ id: id(), email, name: display, ...hashPassword(newToken()), provider: p, contact: rawContact || undefined, referredBy: referrerFor(ref)?.id || null });
     ensureDemoMembership(user);
     return { user: publicUser(user), token: createSession(user.id), mode: 'demo' };
   }
@@ -304,13 +323,13 @@ export function createStore(seed = null, options = {}) {
 
   /* ── magic links ──────────────────────────────────────────── */
 
-  function requestMagicLink({ email, name }) {
+  function requestMagicLink({ email, name, ref }) {
     const norm = normalizeEmail(email);
     if (!norm) return err('invalid_email', 400);
     const t0 = Date.now();
     for (const [h, m] of magicLinks) if (m.expiresAt < t0 - 86_400_000) magicLinks.delete(h);
     const token = newToken();
-    magicLinks.set(sha256(token), { email: norm, name: cleanText(name, 64), expiresAt: t0 + LIMITS.MAGIC_TTL_MS, usedAt: null });
+    magicLinks.set(sha256(token), { email: norm, name: cleanText(name, 64), ref: cleanText(ref, 12).toUpperCase() || null, expiresAt: t0 + LIMITS.MAGIC_TTL_MS, usedAt: null });
     schedulePersist();
     return { token, email: norm };
   }
@@ -323,7 +342,7 @@ export function createStore(seed = null, options = {}) {
     let user = users.get(m.email);
     let created = false;
     if (!user) {
-      user = insertUser({ id: id(), email: m.email, name: m.name || m.email.split('@')[0], ...hashPassword(newToken()), provider: 'email', oauthVerified: true });
+      user = insertUser({ id: id(), email: m.email, name: m.name || m.email.split('@')[0], ...hashPassword(newToken()), provider: 'email', oauthVerified: true, referredBy: referrerFor(m.ref)?.id || null });
       created = true;
       // A real account starts with its own hive and trip, not the shared demo one.
       const hive = createHive(user.id, { name: `${user.name}’s hive` }).hive;
@@ -413,7 +432,7 @@ export function createStore(seed = null, options = {}) {
   function createHive(userId, body) {
     const user = users.get(userId);
     if (!user) return err('unauthorized', 401);
-    if (ownedHives(userId) >= LIMITS.FREE_HIVE_LIMIT) return err('hive_limit', 402);
+    if (ownedHives(userId) >= capsFor(entitlementFor(userId).tier).hives) return err('hive_limit', 402);
     const hive = hiveFromBody(body, userId, id());
     hives.set(hive.id, hive);
     memberships.set(hive.id, [{ userId, memberId: userId, name: user.name || 'You', color: OWNER_COLOR, role: 'owner' }]);
@@ -469,7 +488,7 @@ export function createStore(seed = null, options = {}) {
     const denied = requireHiveMember(hiveId, userId);
     if (denied) return denied;
     const count = [...trips.values()].filter((t) => t.hiveId === hiveId).length;
-    if (count >= LIMITS.FREE_TRIPS_PER_HIVE) return err('trip_limit', 402);
+    if (count >= capsFor(entitlementFor(userId).tier).tripsPerHive) return err('trip_limit', 402);
     const tripId = id();
     const trip = { ...tripFromBody(body, userId, tripId), hiveId };
     trips.set(tripId, trip);
@@ -685,6 +704,59 @@ export function createStore(seed = null, options = {}) {
     return { restaurant: { ...r } };
   }
 
+  /* ── entitlements + referrals ─────────────────────────────── */
+
+  /** Active tier for a user; an expired record reads as Free. */
+  function entitlementFor(userId) {
+    const e = entitlements.get(userId);
+    if (!e) return { tier: 'Free', expiresAt: null, source: 'none' };
+    if (e.expiresAt && Date.parse(e.expiresAt) < Date.now()) return { tier: 'Free', expiresAt: e.expiresAt, source: 'expired' };
+    return { tier: e.tier, expiresAt: e.expiresAt, source: e.source };
+  }
+
+  function issueReferralCode(user) {
+    if (user.referralCode) return user.referralCode;
+    let code = newReferralCode(user.name);
+    while (referrerFor(code)) code = newReferralCode(user.name);
+    user.referralCode = code; // permanent — never regenerated
+    return code;
+  }
+
+  /** Apply a normalised billing event (idempotent by eventId). */
+  function applyEntitlement(input) {
+    const norm = entitlementFromInput(input);
+    if (norm.error) return norm;
+    const { userId, tier, expiresAt, source, eventId } = norm.entitlement;
+    const user = users.get(userId);
+    if (!user || user.deletedAt) return err('user_not_found', 404);
+    if (eventId && billingEvents.has(eventId)) return { ok: true, duplicate: true, ...meProfile(user) };
+    if (eventId) {
+      if (billingEvents.size >= LIMITS.MAX_BILLING_EVENTS) billingEvents.delete(billingEvents.values().next().value);
+      billingEvents.add(eventId);
+    }
+    entitlements.set(userId, { tier, source, expiresAt, updatedAt: now() });
+    if (tier !== 'Free') issueReferralCode(user);
+    schedulePersist();
+    return { ok: true, duplicate: false, ...meProfile(user) };
+  }
+
+  /** Non-production helper: mirrors the demo pricing sheet server-side. */
+  function demoPurchase(userId, tier) {
+    return applyEntitlement({ userId, tier, source: 'demo', eventId: null });
+  }
+
+  function meProfile(user) {
+    const entitlement = entitlementFor(user.id);
+    return {
+      user: publicUser(user),
+      entitlement,
+      features: featuresFor(entitlement.tier),
+      caps: capsFor(entitlement.tier),
+      referralCode: user.referralCode || null,
+      referredBy: user.referredBy || null,
+    };
+  }
+
   /* ── money ────────────────────────────────────────────────── */
 
   function books(tripId) {
@@ -763,6 +835,10 @@ export function createStore(seed = null, options = {}) {
     requestMagicLink,
     consumeMagicLink,
     deleteAccount,
+    entitlementFor,
+    applyEntitlement,
+    demoPurchase,
+    meProfile,
     listHivesForUser,
     createHive,
     getHive,

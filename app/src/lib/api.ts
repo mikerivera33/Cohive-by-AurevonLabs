@@ -11,6 +11,7 @@ import type {
   Member,
   MemberId,
   Payer,
+  PlanTier,
   ReactionEmoji,
   Restaurant,
   ScanCandidate,
@@ -145,16 +146,31 @@ export function oauthStartPath(provider: 'google' | 'apple'): string {
   return '/api/auth/oauth/' + provider;
 }
 
+export interface MeProfile {
+  user: { id: string; name: string; email: string };
+  /** The server is the authority on what has been paid for. */
+  entitlement: { tier: PlanTier; expiresAt: string | null; source: string };
+  features: { connections: boolean; booking: boolean };
+  caps: { hives: number; tripsPerHive: number };
+  referralCode: string | null;
+  referredBy: string | null;
+}
+
 export async function apiMe() {
-  return apiFetch<{ user: { id: string; name: string; email: string } }>('/api/auth/me');
+  return apiFetch<MeProfile>('/api/auth/me');
+}
+
+/** Non-production: sets the tier server-side the way the demo sheet does locally. */
+export async function apiDemoPurchase(tier: PlanTier) {
+  return apiFetch<MeProfile>('/api/billing/demo-purchase', { method: 'POST', body: JSON.stringify({ tier }) });
 }
 
 /* ── passwordless email (magic links) ─────────────────────── */
 
-export async function apiMagicRequest(email: string, name?: string) {
+export async function apiMagicRequest(email: string, name?: string, ref?: string) {
   return apiFetch<{ ok: true; email: string; sent: boolean; devLink?: string }>('/api/auth/magic', {
     method: 'POST',
-    body: JSON.stringify({ email, name }),
+    body: JSON.stringify({ email, name, ref }),
   });
 }
 

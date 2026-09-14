@@ -166,6 +166,19 @@ point), `RESEND_API_KEY` + `COHIVE_MAIL_FROM` (magic-link mail; without them the
   ledgers keep a "Deleted member" placeholder so balances still add up.
 - Google/Apple OAuth activates when the client IDs are configured (`server/oauth.mjs`).
 
+### Entitlements (payments groundwork)
+
+The server is the authority on what a user has paid for. `GET /api/auth/me` returns
+`{ user, entitlement: { tier, expiresAt, source }, features: { connections, booking },
+caps: { hives, tripsPerHive }, referralCode }`. Caps are enforced by the API: Free = 3 hives /
+3 trips per hive, any paid tier = 20 / 20. Billing providers feed
+`POST /api/billing/webhook` with a normalised event `{ userId, tier, expiresAt?, source,
+eventId }` signed with HMAC-SHA256 of the raw body (`X-Cohive-Signature`,
+`COHIVE_BILLING_SECRET`); events are idempotent by `eventId` and an expired entitlement reads
+as Free. The first paid event issues the user's permanent referral code (`MIKE-K7Q210`);
+sign-ups carry `ref` for attribution. Outside production, `POST /api/billing/demo-purchase`
+mirrors the demo pricing sheet server-side so the client's plan comes from the API when live.
+
 ### Hives
 
 The hive is the membership unit. `GET /api/hives` lists yours with their trips; `POST /api/hives`

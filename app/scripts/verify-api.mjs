@@ -587,4 +587,82 @@ console.log('\nhives — trips, Nest and Table inside one membership unit (memor
   });
 }
 
+console.log('\nentitlements — the server decides what is paid for (memory store)');
+{
+  const { createHmac } = await import('node:crypto');
+  process.env.COHIVE_BILLING_SECRET = 'test-secret';
+  const s = createStore(seed);
+  const m = createApi({ store: s, scanImport });
+  const call = async (method, path, body, token, headers = {}) => {
+    const raw = body ? JSON.stringify(body) : undefined;
+    const res = await m.handle(
+      new Request('http://x' + path, {
+        method,
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...headers },
+        body: raw,
+      })
+    );
+    return { status: res.status, data: await res.json().catch(() => ({})) };
+  };
+  const sign = (body) => ({ 'X-Cohive-Signature': createHmac('sha256', 'test-secret').update(JSON.stringify(body)).digest('hex') });
+  const mike = s.register({ email: 'mike@example.com', name: 'Mike', password: 'hunter2hunter2' });
+
+  await aok('/me reports Free with Free caps and no referral code', async () => {
+    const me = await call('GET', '/api/auth/me', undefined, mike.token);
+    assert.equal(me.data.entitlement.tier, 'Free');
+    assert.deepEqual(me.data.caps, { hives: 3, tripsPerHive: 3 });
+    assert.deepEqual(me.data.features, { connections: false, booking: false });
+    assert.equal(me.data.referralCode, null);
+  });
+
+  await aok('billing webhook demands a valid HMAC signature', async () => {
+    const evt = { userId: mike.user.id, tier: 'Platinum', source: 'stripe', eventId: 'evt_1' };
+    assert.equal((await call('POST', '/api/billing/webhook', evt)).status, 401);
+    assert.equal((await call('POST', '/api/billing/webhook', evt, undefined, { 'X-Cohive-Signature': 'deadbeef' })).status, 401);
+    const ok = await call('POST', '/api/billing/webhook', evt, undefined, sign(evt));
+    assert.equal(ok.status, 200);
+    assert.equal(ok.data.entitlement.tier, 'Platinum');
+    assert.match(ok.data.referralCode, /^MIKE-[A-Z0-9]{4}10$/);
+  });
+
+  await aok('events are idempotent; the referral code never changes; caps lift with a paid tier', async () => {
+    const first = (await call('GET', '/api/auth/me', undefined, mike.token)).data.referralCode;
+    const evt = { userId: mike.user.id, tier: 'Cohive+', source: 'stripe', eventId: 'evt_1' };
+    const dup = await call('POST', '/api/billing/webhook', evt, undefined, sign(evt));
+    assert.equal(dup.data.duplicate, true);
+    assert.equal(dup.data.entitlement.tier, 'Platinum', 'a replayed event does not overwrite');
+    const evt2 = { userId: mike.user.id, tier: 'Cohive+', source: 'stripe', eventId: 'evt_2' };
+    const next = await call('POST', '/api/billing/webhook', evt2, undefined, sign(evt2));
+    assert.equal(next.data.entitlement.tier, 'Cohive+');
+    assert.equal(next.data.referralCode, first);
+    assert.deepEqual(next.data.features, { connections: true, booking: false });
+    for (let i = 0; i < 4; i++) assert.equal((await call('POST', '/api/hives', { name: 'H' + i }, mike.token)).status, 201, 'paid: more than 3 hives');
+  });
+
+  await aok('an expired entitlement reads as Free and Free caps return', async () => {
+    const evt = { userId: mike.user.id, tier: 'Cohive+', source: 'stripe', eventId: 'evt_3', expiresAt: new Date(Date.now() - 1000).toISOString() };
+    const r = await call('POST', '/api/billing/webhook', evt, undefined, sign(evt));
+    assert.equal(r.data.entitlement.tier, 'Free');
+    assert.equal(r.data.entitlement.source, 'expired');
+    assert.equal((await call('POST', '/api/hives', { name: 'one more' }, mike.token)).status, 402);
+    const bad = { userId: 'nobody', tier: 'Platinum', eventId: 'evt_4' };
+    assert.equal((await call('POST', '/api/billing/webhook', bad, undefined, sign(bad))).status, 404);
+    const junk = { userId: mike.user.id, tier: 'Gold', eventId: 'evt_5' };
+    assert.equal((await call('POST', '/api/billing/webhook', junk, undefined, sign(junk))).status, 400);
+  });
+
+  await aok('sign-ups carry referral attribution; demo purchase mirrors the sheet outside production', async () => {
+    const code = (await call('GET', '/api/auth/me', undefined, mike.token)).data.referralCode;
+    const nia = await call('POST', '/api/auth/register', { email: 'nia@example.com', name: 'Nia', password: 'hunter2hunter2', ref: code.toLowerCase() });
+    assert.equal(nia.status, 201);
+    assert.equal((await call('GET', '/api/auth/me', undefined, nia.data.token)).data.referredBy, mike.user.id);
+    const buy = await call('POST', '/api/billing/demo-purchase', { tier: 'Cohive+ Annual' }, nia.data.token);
+    assert.equal(buy.status, 200);
+    assert.equal(buy.data.features.booking, true);
+    assert.match(buy.data.referralCode, /^NIA-[A-Z0-9]{4}10$/);
+    assert.equal((await call('POST', '/api/billing/demo-purchase', { tier: 'Gold' }, nia.data.token)).status, 400);
+  });
+  delete process.env.COHIVE_BILLING_SECRET;
+}
+
 console.log(`\nverify:api — ${passed} checks passed`);
