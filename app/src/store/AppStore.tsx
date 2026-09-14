@@ -731,7 +731,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setMembers((prev) => [
               ...prev,
               {
-                id: typeof member.id === 'number' ? member.id : Date.now(),
+                id: member.id, // server user id — must match the ledger keys
                 name: member.name,
                 color: member.color,
               },
