@@ -96,6 +96,6 @@ const server = createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(
     `Cohive serving dist/ + /api on :${PORT}` +
-      (persistPath ? ` (persist: ${persistPath})` : ' (memory-only store)')
+      (persistPath ? ` (${store.backend === 'postgres' ? 'store: postgres' : 'persist: ' + persistPath})` : ' (memory-only store)')
   );
 });
