@@ -227,6 +227,35 @@ export function createApi(deps = {}) {
         return json(201, result);
       }
 
+      // Money — the store only ever moves the session user's own funds.
+      if (method === 'GET' && rest === '/fund') {
+        const result = store.getFund(tripId, user.id);
+        if (result.error) return json(result.status, { error: result.error });
+        return json(200, result);
+      }
+
+      if (method === 'POST' && rest === '/fund/contributions') {
+        const result = store.contribute(tripId, user.id, body.amount);
+        if (result.error) return json(result.status, { error: result.error });
+        return json(201, result);
+      }
+
+      if (method === 'POST' && rest === '/fund/withdrawals') {
+        const result = store.withdraw(tripId, user.id, body.amount);
+        if (result.error) {
+          return json(result.status, { error: result.error, withdrawable: result.withdrawable });
+        }
+        return json(201, result);
+      }
+
+      if (method === 'POST' && rest === '/expenses') {
+        const result = store.addExpense(tripId, user.id, body);
+        if (result.error) {
+          return json(result.status, { error: result.error, shortfalls: result.shortfalls });
+        }
+        return json(201, result);
+      }
+
       if (method === 'POST' && rest === '/spots') {
         const result = store.addSpot(tripId, user.id, body.candidate, body.source);
         if (result.error) return json(result.status, { error: result.error });

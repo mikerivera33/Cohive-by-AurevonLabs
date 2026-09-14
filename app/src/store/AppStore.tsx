@@ -10,29 +10,46 @@ import {
 import type { ReactNode } from 'react';
 
 import { planTrip, scanImport } from '../engine/engine';
+import {
+  SETTLEMENT_CATEGORY,
+  isValidAmount,
+  potShortfalls,
+  summarizeLedger,
+  toCents,
+  withdrawable,
+} from '../engine/ledger';
+import type { LedgerSummary, Transfer } from '../engine/ledger';
 import * as seed from '../engine/seed';
 import {
   ApiError,
+  apiAddExpense,
   apiAddMember,
   apiAddSpot,
   apiCastVote,
+  apiContribute,
   apiDemoAuth,
   apiGetTrip,
   apiHealthy,
   apiListTrips,
+  apiMe,
   apiScan,
+  apiWithdraw,
   getApiToken,
   setApiToken,
 } from '../lib/api';
 import { fireConfetti } from '../lib/confetti';
+import { money } from '../lib/money';
 import { sanitizeImportText } from '../lib/sanitize';
 import { isBool, isSessionToken, isShortString, isStringArray, load, save } from '../lib/storage';
 import type {
   ActivityItem,
   Expense,
+  FundEntry,
   Listing,
   Member,
+  MemberId,
   Pace,
+  Payer,
   PlanTier,
   ReactionEmoji,
   Category,
@@ -68,6 +85,14 @@ const SCAN_MS = 1100;
 /** Bound feed growth under spam / stress so session state cannot run away. */
 const ACTIVITY_CAP = 40;
 const ADDED_IDS_CAP = 200;
+
+export interface ExpenseOpts {
+  category?: string;
+  paidBy?: Payer;
+  splitWith?: MemberId[];
+}
+
+const sameId = (a: MemberId, b: MemberId) => String(a) === String(b);
 
 function prependActivity(prev: ActivityItem[], item: ActivityItem): ActivityItem[] {
   return [item, ...prev].slice(0, ACTIVITY_CAP);
@@ -108,6 +133,12 @@ interface AppStore {
   spots: Spot[];
   expenses: Expense[];
   members: Member[];
+  /** Shared pot — every contribution and withdrawal, per member. */
+  fund: FundEntry[];
+  /** Pot, envelopes, IOU balances and the settle-up plan, derived from the books. */
+  ledger: LedgerSummary;
+  /** The member acting in this session (owner in demo mode, the signed-in user when live). */
+  meId: MemberId;
   activity: ActivityItem[];
   nest: Listing[];
   table: Restaurant[];
@@ -116,7 +147,14 @@ interface AppStore {
   addedIds: string[];
   setTier: (id: number, tier: Tier) => void;
   addSpotFromScan: (candidate: ScanCandidate, source: string) => void;
-  addExpense: (label: string, amount: number) => void;
+  /** Logs a split expense; false when it was refused (bad amount, pot shortfall). */
+  addExpense: (label: string, amount: number, opts?: ExpenseOpts) => boolean;
+  /** Put your own money into the pot. */
+  contribute: (amount: number) => boolean;
+  /** Take out up to what you put in — never anyone else's money. */
+  withdraw: (amount: number) => boolean;
+  /** Record a suggested transfer as paid, netting both balances. */
+  settle: (t: Transfer) => void;
   addMember: (name: string) => void;
   toggleReaction: (listingId: number, emoji: ReactionEmoji) => void;
 
@@ -203,6 +241,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     seed.trip.expenses.map((e) => ({ ...e }))
   );
   const [members, setMembers] = useState<Member[]>(() => seed.members.map((m) => ({ ...m })));
+  const [fund, setFund] = useState<FundEntry[]>(() => seed.fund.map((f) => ({ ...f })));
+  const [meId, setMeId] = useState<MemberId>(seed.members[0].id);
   const [activity, setActivity] = useState<ActivityItem[]>(() => seed.activity.slice());
   const [nest, setNest] = useState<Listing[]>(cloneNest);
   const [table] = useState<Restaurant[]>(() => seed.table.map((t) => ({ ...t })));
@@ -291,13 +331,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lng: data.trip.lng,
     });
     setSpots(data.spots.map((s) => ({ ...s })));
-    setMembers(
-      data.members.map((m, i) => ({
-        id: typeof m.id === 'number' ? m.id : i + 1,
-        name: m.name,
-        color: m.color,
-      }))
-    );
+    // Server member ids are user ids — keep them so the ledger keys line up.
+    setMembers(data.members.map((m) => ({ id: m.id, name: m.name, color: m.color })));
+    setFund((data.fund || []).map((f) => ({ ...f })));
+    if (data.trip.expenses) setExpenses(data.trip.expenses.map((e) => ({ ...e })));
+    try {
+      const { user } = await apiMe();
+      setMeId(user.id);
+    } catch {
+      // Stay on the demo identity; money actions will simply be refused server-side.
+    }
   }, []);
 
   // Resume a prior session when the API is up; otherwise stay on seed fixtures.
@@ -488,15 +531,194 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, SCAN_MS);
   }, [scanText, say, tripMeta.city, tripMeta.lat, tripMeta.lng]);
 
-  const addExpense = useCallback(
-    (label: string, amount: number) => {
-      setExpenses((prev) => [
-        ...prev,
-        { id: Date.now(), label, category: 'other', amount },
-      ]);
-      say('Expense logged');
+  /* ── money: shared pot + splitting ────────────────────────── */
+  const memberIds = useMemo(() => members.map((m) => m.id), [members]);
+  const ledger = useMemo(
+    () => summarizeLedger(memberIds, expenses, fund, meId),
+    [memberIds, expenses, fund, meId]
+  );
+
+  const nameOf = useCallback(
+    (id: MemberId) => members.find((m) => sameId(m.id, id))?.name ?? 'Someone',
+    [members]
+  );
+
+  const shortfallMessage = useCallback(
+    (short: Array<{ memberId: MemberId; short: number }>) => {
+      const first = short[0];
+      const more = short.length > 1 ? ` (+${short.length - 1} more)` : '';
+      return `${nameOf(first.memberId)} is $${money(first.short)} short of their share${more} — top up the pot first`;
     },
-    [say]
+    [nameOf]
+  );
+
+  const envelopeMessage = (limit: number) =>
+    limit > 0
+      ? `You can take out up to $${money(limit)} — only what you put in`
+      : 'Nothing of yours is in the pot — only what you put in can come out';
+
+  const applyBooks = useCallback((p: { fund: FundEntry[]; expenses: Expense[] }) => {
+    setFund(p.fund.map((f) => ({ ...f })));
+    setExpenses(p.expenses.map((e) => ({ ...e })));
+  }, []);
+
+  const moneyError = useCallback(
+    (e: unknown, fallback: string) => {
+      if (!(e instanceof ApiError)) return fallback;
+      if (e.code === 'forbidden') return 'Not a hive member';
+      if (e.code === 'exceeds_envelope') return envelopeMessage(Number(e.data.withdrawable) || 0);
+      if (e.code === 'pot_shortfall' && Array.isArray(e.data.shortfalls)) {
+        return shortfallMessage(e.data.shortfalls as Array<{ memberId: MemberId; short: number }>);
+      }
+      return fallback;
+    },
+    [shortfallMessage]
+  );
+
+  const addExpense = useCallback(
+    (label: string, amount: number, opts: ExpenseOpts = {}) => {
+      if (!isValidAmount(amount)) {
+        say('Enter a valid amount');
+        return false;
+      }
+      const paidBy: Payer = opts.paidBy ?? meId;
+      const chosen = (opts.splitWith ?? memberIds).filter((id) => memberIds.some((x) => sameId(x, id)));
+      const draft: Expense = {
+        id: nextId.current++,
+        label,
+        category: opts.category ?? 'other',
+        amount,
+        paidBy,
+        splitWith: chosen.length ? chosen : memberIds,
+      };
+      if (paidBy === 'pot') {
+        const short = potShortfalls(draft, memberIds, expenses, fund, meId);
+        if (short.length) {
+          say(shortfallMessage(short));
+          return false;
+        }
+      }
+      const settled = draft.category === SETTLEMENT_CATEGORY;
+      const done = () => {
+        say(settled ? 'Marked as settled' : 'Expense logged');
+        setActivity((prev) =>
+          prependActivity(prev, {
+            who: 'You',
+            what: settled ? 'settled up: ' + label : `logged ${label} · $${money(amount)}`,
+            when: 'just now',
+          })
+        );
+      };
+      const tripId = apiTripIdRef.current;
+      if (apiLiveRef.current && tripId) {
+        void (async () => {
+          try {
+            applyBooks(
+              await apiAddExpense(tripId, {
+                label,
+                amount,
+                category: draft.category,
+                paidBy,
+                splitWith: draft.splitWith,
+              })
+            );
+            done();
+          } catch (e) {
+            say(moneyError(e, 'Could not log expense'));
+          }
+        })();
+        return true;
+      }
+      setExpenses((prev) => [...prev, draft]);
+      done();
+      return true;
+    },
+    [applyBooks, expenses, fund, meId, memberIds, moneyError, say, shortfallMessage]
+  );
+
+  const contribute = useCallback(
+    (amount: number) => {
+      if (!isValidAmount(amount)) {
+        say('Enter a valid amount');
+        return false;
+      }
+      const done = () => {
+        say(`Added $${money(amount)} to the pot`);
+        setActivity((prev) =>
+          prependActivity(prev, { who: 'You', what: `added $${money(amount)} to the pot`, when: 'just now' })
+        );
+      };
+      const tripId = apiTripIdRef.current;
+      if (apiLiveRef.current && tripId) {
+        void (async () => {
+          try {
+            applyBooks(await apiContribute(tripId, amount));
+            done();
+          } catch (e) {
+            say(moneyError(e, 'Could not add to the pot'));
+          }
+        })();
+        return true;
+      }
+      setFund((prev) => [
+        ...prev,
+        { id: nextId.current++, memberId: meId, kind: 'contribution', amount, at: new Date().toISOString() },
+      ]);
+      done();
+      return true;
+    },
+    [applyBooks, meId, moneyError, say]
+  );
+
+  const withdraw = useCallback(
+    (amount: number) => {
+      if (!isValidAmount(amount)) {
+        say('Enter a valid amount');
+        return false;
+      }
+      // Client-side guard for instant feedback; the server re-checks when live.
+      const limit = withdrawable(meId, memberIds, expenses, fund, meId);
+      if (toCents(amount) > toCents(limit)) {
+        say(envelopeMessage(limit));
+        return false;
+      }
+      const done = () => {
+        say(`Took $${money(amount)} out of the pot`);
+        setActivity((prev) =>
+          prependActivity(prev, { who: 'You', what: `took $${money(amount)} out of the pot`, when: 'just now' })
+        );
+      };
+      const tripId = apiTripIdRef.current;
+      if (apiLiveRef.current && tripId) {
+        void (async () => {
+          try {
+            applyBooks(await apiWithdraw(tripId, amount));
+            done();
+          } catch (e) {
+            say(moneyError(e, 'Could not take money out'));
+          }
+        })();
+        return true;
+      }
+      setFund((prev) => [
+        ...prev,
+        { id: nextId.current++, memberId: meId, kind: 'withdrawal', amount, at: new Date().toISOString() },
+      ]);
+      done();
+      return true;
+    },
+    [applyBooks, expenses, fund, meId, memberIds, moneyError, say]
+  );
+
+  const settle = useCallback(
+    (t: Transfer) => {
+      addExpense(`${nameOf(t.from)} paid ${nameOf(t.to)}`, t.amount, {
+        category: SETTLEMENT_CATEGORY,
+        paidBy: t.from,
+        splitWith: [t.to],
+      });
+    },
+    [addExpense, nameOf]
   );
 
   const addMember = useCallback(
@@ -509,7 +731,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             setMembers((prev) => [
               ...prev,
               {
-                id: typeof member.id === 'number' ? member.id : Date.now(),
+                id: member.id, // server user id — must match the ledger keys
                 name: member.name,
                 color: member.color,
               },
@@ -649,6 +871,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       spots,
       expenses,
       members,
+      fund,
+      ledger,
+      meId,
       activity,
       nest,
       table,
@@ -656,6 +881,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTier,
       addSpotFromScan,
       addExpense,
+      contribute,
+      withdraw,
+      settle,
       addMember,
       toggleReaction,
       scanText,
@@ -696,8 +924,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }),
     [
       light, onboarded, finishOnboarding, replayOnboarding, authenticate, acceptAuthToken, apiLive, tab, tripView,
-      tripMeta, spots, expenses, members, activity, nest, table, addedIds,
-      setTier, addSpotFromScan, addExpense, addMember, toggleReaction,
+      tripMeta, spots, expenses, members, fund, ledger, meId, activity, nest, table, addedIds,
+      setTier, addSpotFromScan, addExpense, contribute, withdraw, settle, addMember, toggleReaction,
       scanText, scanning, scanResult, scan,
       catFilter, tableFilter, expLabel, expAmt,
       planDays, pace, plan, building, buildStage, generate,
