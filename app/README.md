@@ -84,7 +84,7 @@ clearing every balance in ≤ n−1 transfers.
 
 ### End to end — `npm run smoke`
 
-71 checks driving a real browser through every flow: onboarding → auth → create hive →
+77 checks driving a real browser through every flow: onboarding → auth → create hive →
 invite → home → trip map → scan and add → tier voting → itinerary generation → budget →
 crew → Nest → Table → pricing → all 21 connections → theme toggle → persistence across a
 reload → replay tour → desktop bezel — plus deep flows: scanner results and list filters
@@ -166,6 +166,15 @@ point), `RESEND_API_KEY` + `COHIVE_MAIL_FROM` (magic-link mail; without them the
   ledgers keep a "Deleted member" placeholder so balances still add up.
 - Google/Apple OAuth activates when the client IDs are configured (`server/oauth.mjs`).
 
+### Hives
+
+The hive is the membership unit. `GET /api/hives` lists yours with their trips; `POST /api/hives`
+creates one (Free: 3 owned); `GET /api/hives/:id` bundles members, trips, Nest listings and
+Table entries; `POST /api/hives/:id/trips` adds a trip (Free: 3 per hive). Nest: `POST
+/api/hives/:id/nest`, `POST /api/hives/:id/nest/:id/react {emoji}` (keyed by member id). Table:
+`POST /api/hives/:id/table`, `POST /api/hives/:id/table/:id {tried, tier}`. The app shows the
+hive's trips on Home with create-and-switch; offline, trips are kept in memory per session.
+
 ### Invites
 
 Adding a member creates a placeholder plus a single-use invite (`POST /api/trips/:id/members` →
@@ -217,7 +226,7 @@ contributions logged against "Maya" before she joined are still hers. The app ca
 - **Native**: `android:allowBackup="false"`; iOS ATS fully on (no exceptions);
   app id and manifests validated.
 - **CI**: `.github/workflows/ci.yml` runs audit (fails on any vulnerability),
-  typecheck+build, both engine suites, the 71-check walkthrough, the browser
+  typecheck+build, both engine suites, the 77-check walkthrough, the browser
   stress run, the axe audit, and a `cap sync` sanity check on every push/PR.
 
 ## What's persisted

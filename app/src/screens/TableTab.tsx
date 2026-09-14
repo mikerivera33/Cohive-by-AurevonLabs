@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import { MapPreview } from '../components/MapPreview';
 import type { MapMarker } from '../components/LazyMap';
@@ -18,8 +18,19 @@ const TIER_META: Record<Tier, [string, string]> = {
 };
 
 export function TableTab() {
-  const { table, light, say, openPricing, bookingUnlocked, tableFilter: filter, setTableFilter: setFilter } =
+  const { table, light, say, openPricing, bookingUnlocked, tableFilter: filter, setTableFilter: setFilter, setTried, addRestaurant } =
     useApp();
+  const [name, setName] = useState('');
+  const [cuisine, setCuisine] = useState('');
+  const [hood, setHood] = useState('');
+
+  const onAdd = async () => {
+    if (await addRestaurant({ name, cuisine, hood })) {
+      setName('');
+      setCuisine('');
+      setHood('');
+    }
+  };
 
   const markers = useMemo<MapMarker[]>(
     () => table.map((t) => ({ lat: t.lat, lng: t.lng, color: '#F472B6', label: t.name })),
@@ -72,6 +83,29 @@ export function TableTab() {
         light={light}
         style={{ marginBottom: 14 }}
       />
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Add a place — e.g. Kru" aria-label="Place name" style={{ flex: '1 1 120px', minWidth: 0 }} />
+        <input value={cuisine} onChange={(e) => setCuisine(e.target.value)} placeholder="Cuisine" aria-label="Place cuisine" style={{ flex: '1 1 90px', minWidth: 0 }} />
+        <input value={hood} onChange={(e) => setHood(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void onAdd()} placeholder="Neighborhood" aria-label="Place neighborhood" style={{ flex: '1 1 110px', minWidth: 0 }} />
+        <button type="button" className="press grot" onClick={() => void onAdd()} style={{
+                ...press(0.98),
+                minHeight: 44,
+                background: 'var(--panelS)',
+                border: '1px solid var(--lineB)',
+                color: 'var(--honey)',
+                borderRadius: 999,
+                padding: '0 16px',
+                fontWeight: 700,
+                fontSize: 11,
+                letterSpacing: '.08em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}>
+          Add place
+        </button>
+      </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
         {filters.map((f) => (
@@ -183,6 +217,29 @@ export function TableTab() {
               >
                 Maps
               </a>
+              <button
+                type="button"
+                className="press grot"
+                aria-pressed={t.tried}
+                aria-label={(t.tried ? 'Mark untried: ' : 'Mark tried: ') + t.name}
+                onClick={() => setTried(t.id, !t.tried)}
+                style={{
+                  ...press(0.95),
+                  background: 'none',
+                  border: '1px solid var(--line)',
+                  color: t.tried ? 'var(--mint)' : 'var(--soft)',
+                  fontWeight: 600,
+                  fontSize: 10.5,
+                  letterSpacing: '.05em',
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                  minHeight: 44,
+                  padding: '10px 12px',
+                  borderRadius: 999,
+                }}
+              >
+                {t.tried ? 'Tried ✓' : 'Tried it'}
+              </button>
               <button
                 type="button"
                 className="press grot"

@@ -11,7 +11,18 @@ import type { ReactionEmoji } from '../types';
 const REACTIONS: ReactionEmoji[] = ['💍', '🪴'];
 
 export function NestTab() {
-  const { nest, light, toggleReaction, say } = useApp();
+  const { nest, light, toggleReaction, say, meId, addListing } = useApp();
+  const [title, setTitle] = useState('');
+  const [price, setPrice] = useState('');
+  const [hood, setHood] = useState('');
+
+  const onSave = async () => {
+    if (await addListing({ title, price: Number(price) || 0, hood })) {
+      setTitle('');
+      setPrice('');
+      setHood('');
+    }
+  };
   const [focus, setFocus] = useState<{ lat: number; lng: number; zoom: number; nonce: number } | null>(null);
 
   const markers = useMemo<MapMarker[]>(
@@ -51,6 +62,29 @@ export function NestTab() {
         focus={focus}
         style={{ marginBottom: 14 }}
       />
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Save a listing — e.g. Bushwick 1BR" aria-label="Listing title" style={{ flex: '1 1 120px', minWidth: 0 }} />
+        <input value={price} onChange={(e) => setPrice(e.target.value)} type="number" inputMode="numeric" min={0} placeholder="$/mo" aria-label="Listing rent" style={{ flex: '1 1 80px', minWidth: 0 }} />
+        <input value={hood} onChange={(e) => setHood(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && void onSave()} placeholder="Neighborhood" aria-label="Listing neighborhood" style={{ flex: '1 1 110px', minWidth: 0 }} />
+        <button type="button" className="press grot" onClick={() => void onSave()} style={{
+                ...press(0.98),
+                minHeight: 44,
+                background: 'var(--panelS)',
+                border: '1px solid var(--lineB)',
+                color: 'var(--honey)',
+                borderRadius: 999,
+                padding: '0 16px',
+                fontWeight: 700,
+                fontSize: 11,
+                letterSpacing: '.08em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}>
+          Save listing
+        </button>
+      </div>
 
       {nest.map((n) => (
         <Reveal
@@ -109,7 +143,7 @@ export function NestTab() {
 
           <div style={{ display: 'flex', gap: 7 }}>
             {REACTIONS.map((em) => {
-              const mine = n.reactions[em].includes('You');
+              const mine = n.reactions[em].includes(String(meId));
               const count = n.reactions[em].length;
               return (
                 <button

@@ -49,8 +49,30 @@ export interface Expense {
   splitWith?: MemberId[];
 }
 
+export interface TripSummary {
+  id: string;
+  name: string;
+  city: string;
+  country: string;
+  startDate: string;
+  days: number;
+  hiveId?: string;
+}
+
+/** The membership unit: trips, Nest listings and Table entries live inside a hive. */
+export interface HiveSummary {
+  id: string;
+  name: string;
+  role: 'owner' | 'member';
+  memberCount: number;
+  trips: TripSummary[];
+}
+
 export interface Trip extends LatLng {
   id: number;
+  /** Server trip id (or a local key offline) — the ledger of trips is keyed by this. */
+  key?: string;
+  hiveId?: string;
   name: string;
   city: string;
   country: string;

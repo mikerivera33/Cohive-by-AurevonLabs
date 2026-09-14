@@ -268,6 +268,41 @@ export function createApi(deps = {}) {
       return json(200, { trips: await store.listTripsForUser(user.id) });
     }
 
+    // ── Hives: the membership unit (trips, Nest and Table live inside) ──
+    if (method === 'GET' && path === '/api/hives') {
+      return json(200, { hives: await store.listHivesForUser(user.id) });
+    }
+    if (method === 'POST' && path === '/api/hives') {
+      const result = await store.createHive(user.id, body);
+      if (result.error) return json(result.status, { error: result.error });
+      return json(201, result);
+    }
+    const hiveMatch = path.match(/^\/api\/hives\/([^/]+)(.*)$/);
+    if (hiveMatch) {
+      const hiveId = decodeURIComponent(hiveMatch[1]);
+      const rest = hiveMatch[2] || '';
+      const send = (status, result, extra) =>
+        result.error ? json(result.status, { error: result.error }) : json(status, extra ? { ...result, ...extra } : result);
+
+      if (method === 'GET' && rest === '') return send(200, await store.getHive(hiveId, user.id));
+      if (method === 'POST' && rest === '/trips') return send(201, await store.createTrip(user.id, { ...body, hiveId }));
+      if (method === 'POST' && rest === '/members') {
+        const result = await store.addMember(hiveId, user.id, body.name);
+        return send(201, result, result.error ? undefined : { url: inviteUrl(result.invite?.code) });
+      }
+      if (method === 'POST' && rest === '/invites') {
+        const result = await store.createInvite(hiveId, user.id, body);
+        return send(201, result, result.error ? undefined : { url: inviteUrl(result.invite.code) });
+      }
+      if (method === 'POST' && rest === '/nest') return send(201, await store.addListing(hiveId, user.id, body));
+      const react = rest.match(/^\/nest\/(\d+)\/react$/);
+      if (method === 'POST' && react) return send(200, await store.toggleReaction(hiveId, user.id, react[1], body.emoji));
+      if (method === 'POST' && rest === '/table') return send(201, await store.addRestaurant(hiveId, user.id, body));
+      const dish = rest.match(/^\/table\/(\d+)$/);
+      if (method === 'POST' && dish) return send(200, await store.updateRestaurant(hiveId, user.id, dish[1], body));
+      return json(404, { error: 'not_found' });
+    }
+
     if (method === 'POST' && path === '/api/trips') {
       const result = await store.createTrip(user.id, body);
       if (result.error) return json(result.status, { error: result.error });
@@ -304,16 +339,16 @@ export function createApi(deps = {}) {
         return json(200, { members: result.members });
       }
 
-      if (method === 'POST' && rest === '/members') {
-        const result = await store.addMember(tripId, user.id, body.name);
+      // Members and invites belong to the trip's hive; these paths stay as aliases.
+      if (method === 'POST' && (rest === '/members' || rest === '/invites')) {
+        const hiveId = await store.hiveOfTrip(tripId);
+        if (!hiveId) return json(404, { error: 'trip_not_found' });
+        const result =
+          rest === '/members'
+            ? await store.addMember(hiveId, user.id, body.name)
+            : await store.createInvite(hiveId, user.id, body);
         if (result.error) return json(result.status, { error: result.error });
         return json(201, { ...result, url: inviteUrl(result.invite?.code) });
-      }
-
-      if (method === 'POST' && rest === '/invites') {
-        const result = await store.createInvite(tripId, user.id, body);
-        if (result.error) return json(result.status, { error: result.error });
-        return json(201, { ...result, url: inviteUrl(result.invite.code) });
       }
 
       // Money — the store only ever moves the session user's own funds.

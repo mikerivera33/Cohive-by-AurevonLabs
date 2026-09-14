@@ -1,6 +1,17 @@
 /** Minimal Tokyo trip seed for the API store (mirrors src/engine/seed.ts). */
 
 export const seed = {
+  hive: { id: 1, name: 'Tokyo Crew' },
+  nest: [
+    { id: 1, title: 'Sunny 2BR in Park Slope', price: 3850, beds: 2, baths: 1, sqft: 850, hood: 'Park Slope', lat: 40.671, lng: -73.9814, source: 'zillow', note: 'Top floor, W/D in unit, pets ok', reactions: { '💍': [], '🪴': [] }, tagged: null },
+    { id: 2, title: 'Greenpoint loft, skyline view', price: 4200, beds: 1, baths: 1, sqft: 780, hood: 'Greenpoint', lat: 40.7304, lng: -73.9515, source: 'streeteasy', note: '14ft ceilings, roof deck', reactions: { '💍': [], '🪴': [] }, tagged: null },
+    { id: 3, title: 'Astoria 2BR near the park', price: 2975, beds: 2, baths: 1, sqft: 900, hood: 'Astoria', lat: 40.7644, lng: -73.9235, source: 'zillow', note: 'Renovated kitchen, 2 blocks to N/W', reactions: { '💍': [], '🪴': [] }, tagged: null },
+  ],
+  table: [
+    { id: 1, name: 'Via Carota', cuisine: 'Italian', mood: 'Cozy', price: '$$$', hood: 'West Village', lat: 40.7331, lng: -74.0036, hours: '5–11 pm', tried: true, tier: 'must' },
+    { id: 2, name: 'Lilia', cuisine: 'Italian', mood: 'Buzzy', price: '$$$', hood: 'Williamsburg', lat: 40.7178, lng: -73.9527, hours: '5:30–11 pm', tried: false, tier: 'must' },
+    { id: 3, name: 'Dhamaka', cuisine: 'Indian', mood: 'Bold', price: '$$', hood: 'Lower East Side', lat: 40.7183, lng: -73.9878, hours: '5:30 pm–12 am', tried: true, tier: 'maybe' },
+  ],
   trip: {
     id: 1,
     name: 'Tokyo long weekend',

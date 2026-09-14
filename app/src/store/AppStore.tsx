@@ -24,8 +24,14 @@ import {
   ApiError,
   apiAcceptInvite,
   apiAddExpense,
+  apiAddListing,
   apiAddMember,
+  apiAddRestaurant,
   apiAddSpot,
+  apiCreateTrip,
+  apiGetHive,
+  apiReact,
+  apiUpdateRestaurant,
   apiCastVote,
   apiContribute,
   apiCreateInvite,
@@ -51,11 +57,13 @@ import type {
   ActivityItem,
   Expense,
   FundEntry,
+  HiveSummary,
   Listing,
   Member,
   MemberId,
   Pace,
   Payer,
+  TripSummary,
   PlanTier,
   ReactionEmoji,
   Category,
@@ -147,6 +155,18 @@ interface AppStore {
   setTripView: (v: TripView) => void;
 
   /* hive data */
+  /** The hive this session is in (offline: the seed hive). */
+  hive: HiveSummary;
+  /** Trips in the hive; `currentTripId` is the one on screen. */
+  trips: TripSummary[];
+  currentTripId: string;
+  switchTrip: (id: string) => Promise<void>;
+  /** Creates a trip in the hive; false when refused (empty name, Free limit). */
+  createTrip: (name: string, city: string) => Promise<boolean>;
+  /* Nest + Table */
+  addListing: (input: { title: string; price: number; hood: string; beds?: number; baths?: number }) => Promise<boolean>;
+  addRestaurant: (input: { name: string; cuisine: string; hood: string; mood?: string }) => Promise<boolean>;
+  setTried: (id: number, tried: boolean) => void;
   trip: Trip;
   spots: Spot[];
   expenses: Expense[];
@@ -270,7 +290,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => save('pendingInvite', pendingInvite), [pendingInvite]);
   const [activity, setActivity] = useState<ActivityItem[]>(() => seed.activity.slice());
   const [nest, setNest] = useState<Listing[]>(cloneNest);
-  const [table] = useState<Restaurant[]>(() => seed.table.map((t) => ({ ...t })));
+  const [table, setTable] = useState<Restaurant[]>(() => seed.table.map((t) => ({ ...t })));
+  const seedTripSummary: TripSummary = {
+    id: 'seed-' + seed.trip.id,
+    name: seed.trip.name,
+    city: seed.trip.city,
+    country: seed.trip.country,
+    startDate: seed.trip.startDate,
+    days: seed.trip.days,
+    hiveId: 'seed-hive',
+  };
+  const [hive, setHive] = useState<HiveSummary>({
+    id: 'seed-hive',
+    name: 'Tokyo Crew',
+    role: 'owner',
+    memberCount: seed.members.length,
+    trips: [seedTripSummary],
+  });
+  const [currentTripId, setCurrentTripId] = useState<string>(seedTripSummary.id);
+  // Offline: each trip's working set is stashed here when you switch away.
+  const localTrips = useRef<Record<string, { trip: Trip; spots: Spot[]; expenses: Expense[]; fund: FundEntry[]; plan: TripPlan | null }>>({});
   const [addedIds, setAddedIds] = useState<string[]>([]);
   const [apiLive, setApiLive] = useState(false);
   const [apiTripId, setApiTripId] = useState<string | null>(null);
@@ -347,29 +386,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const data = await apiGetTrip(tripId);
     setApiTripId(tripId);
     setApiLive(true);
+    setCurrentTripId(tripId);
     setTripMeta({
       ...seed.trip,
       id: Number(data.trip.id) || seed.trip.id,
+      key: tripId,
+      hiveId: data.trip.hiveId,
       name: data.trip.name,
       city: data.trip.city,
       lat: data.trip.lat,
       lng: data.trip.lng,
     });
     setSpots(data.spots.map((s) => ({ ...s })));
-    // Server member ids are user ids — keep them so the ledger keys line up.
+    // Server member ids are ledger keys — keep them exactly.
     setMembers(data.members.map((m) => ({ id: m.id, name: m.name, color: m.color })));
     setFund((data.fund || []).map((f) => ({ ...f })));
     if (data.trip.expenses) setExpenses(data.trip.expenses.map((e) => ({ ...e })));
+    setPlan(null);
     setInviteLinks({});
-    if (data.me) {
-      setMeId(data.me);
-      return;
+    if (data.me) setMeId(data.me);
+    if (data.trip.hiveId) {
+      try {
+        const h = await apiGetHive(data.trip.hiveId);
+        setHive(h.hive);
+        setNest(h.nest.map((n) => ({ ...n, reactions: { '💍': [...(n.reactions?.['💍'] || [])], '🪴': [...(n.reactions?.['🪴'] || [])] } })));
+        setTable(h.table.map((t) => ({ ...t })));
+        if (h.me) setMeId(h.me);
+      } catch {
+        // Trip screens still work; Nest/Table keep whatever was loaded.
+      }
     }
-    try {
-      const { user } = await apiMe();
-      setMeId(user.id);
-    } catch {
-      // Stay on the demo identity; money actions will simply be refused server-side.
+    if (!data.me) {
+      try {
+        const { user } = await apiMe();
+        setMeId(user.id);
+      } catch {
+        // Stay on the demo identity; money actions will simply be refused server-side.
+      }
     }
   }, []);
 
@@ -874,26 +927,209 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [say]
   );
 
-  const toggleReaction = useCallback((listingId: number, emoji: ReactionEmoji) => {
-    let added = false;
-    setNest((prev) =>
-      prev.map((x) => {
-        if (x.id !== listingId) return x;
-        const mine = x.reactions[emoji].includes('You');
-        added = !mine;
-        return {
-          ...x,
-          reactions: {
-            ...x.reactions,
-            [emoji]: mine
-              ? x.reactions[emoji].filter((p) => p !== 'You')
-              : [...x.reactions[emoji], 'You'],
-          },
-        };
-      })
-    );
-    if (added) fireConfetti();
-  }, []);
+  const toggleReaction = useCallback(
+    (listingId: number, emoji: ReactionEmoji) => {
+      if (apiLiveRef.current && hive.id !== 'seed-hive') {
+        void (async () => {
+          try {
+            const { listing } = await apiReact(hive.id, listingId, emoji);
+            setNest((prev) => prev.map((x) => (x.id === listingId ? { ...x, reactions: listing.reactions } : x)));
+            if (listing.reactions[emoji].includes(String(meId))) fireConfetti();
+          } catch {
+            say('Could not save your reaction');
+          }
+        })();
+        return;
+      }
+      const me = String(meId);
+      let added = false;
+      setNest((prev) =>
+        prev.map((x) => {
+          if (x.id !== listingId) return x;
+          const mine = x.reactions[emoji].includes(me);
+          added = !mine;
+          return {
+            ...x,
+            reactions: { ...x.reactions, [emoji]: mine ? x.reactions[emoji].filter((p) => p !== me) : [...x.reactions[emoji], me] },
+          };
+        })
+      );
+      if (added) fireConfetti();
+    },
+    [hive.id, meId, say]
+  );
+
+  /* ── trips: switch + create ───────────────────────────────── */
+  const stashCurrent = useCallback(() => {
+    localTrips.current[currentTripId] = { trip: tripMeta, spots, expenses, fund, plan };
+  }, [currentTripId, tripMeta, spots, expenses, fund, plan]);
+
+  const switchTrip = useCallback(
+    async (id: string) => {
+      if (id === currentTripId) return;
+      if (apiLiveRef.current) {
+        try {
+          await hydrateFromApi(id);
+        } catch {
+          say('Could not open that trip');
+        }
+        return;
+      }
+      stashCurrent();
+      const next = localTrips.current[id];
+      if (!next) return;
+      setTripMeta(next.trip);
+      setSpots(next.spots);
+      setExpenses(next.expenses);
+      setFund(next.fund);
+      setPlan(next.plan);
+      setCurrentTripId(id);
+      say('Switched to ' + next.trip.name);
+    },
+    [currentTripId, hydrateFromApi, say, stashCurrent]
+  );
+
+  const createTrip = useCallback(
+    async (name: string, city: string) => {
+      const label = name.trim().slice(0, 80);
+      if (!label) {
+        say('Give the trip a name');
+        return false;
+      }
+      if (apiLiveRef.current && hive.id !== 'seed-hive') {
+        try {
+          const { trip } = await apiCreateTrip(hive.id, { name: label, city: city.trim(), lat: tripMeta.lat, lng: tripMeta.lng });
+          const h = await apiGetHive(hive.id);
+          setHive(h.hive);
+          await hydrateFromApi(trip.id);
+          say('Trip created — ' + trip.name);
+          return true;
+        } catch (e) {
+          if (e instanceof ApiError && e.code === 'trip_limit') {
+            say('Free hives hold 3 trips — Cohive+ lifts the limit');
+            setPricingOpen(true);
+          } else say('Could not create the trip');
+          return false;
+        }
+      }
+      if (hive.trips.length >= 3) {
+        say('Free hives hold 3 trips — Cohive+ lifts the limit');
+        setPricingOpen(true);
+        return false;
+      }
+      stashCurrent();
+      const key = 'local-' + nextId.current++;
+      const trip: Trip = {
+        ...seed.trip,
+        id: nextId.current++,
+        key,
+        hiveId: hive.id,
+        name: label,
+        city: city.trim() || seed.trip.city,
+        startDate: new Date().toISOString().slice(0, 10),
+        expenses: [],
+      };
+      const summary: TripSummary = { id: key, name: trip.name, city: trip.city, country: trip.country, startDate: trip.startDate, days: trip.days, hiveId: hive.id };
+      localTrips.current[key] = { trip, spots: [], expenses: [], fund: [], plan: null };
+      setHive((h) => ({ ...h, trips: [...h.trips, summary] }));
+      setTripMeta(trip);
+      setSpots([]);
+      setExpenses([]);
+      setFund([]);
+      setPlan(null);
+      setCurrentTripId(key);
+      setActivity((prev) => prependActivity(prev, { who: 'You', what: 'started a new trip: ' + label, when: 'just now' }));
+      say('Trip created — ' + label);
+      return true;
+    },
+    [hive.id, hive.trips.length, hydrateFromApi, say, stashCurrent, tripMeta.lat, tripMeta.lng]
+  );
+
+  /* ── Nest + Table ─────────────────────────────────────────── */
+  const addListing = useCallback(
+    async (input: { title: string; price: number; hood: string; beds?: number; baths?: number }) => {
+      const title = input.title.trim();
+      if (!title) {
+        say('Give the listing a title');
+        return false;
+      }
+      const base = { ...input, title, lat: seed.NYC_NEST_CENTER[0] + (Math.random() - 0.5) * 0.05, lng: seed.NYC_NEST_CENTER[1] + (Math.random() - 0.5) * 0.05 };
+      if (apiLiveRef.current && hive.id !== 'seed-hive') {
+        try {
+          const { listing } = await apiAddListing(hive.id, base);
+          setNest((prev) => [...prev, listing]);
+          say('Listing saved to the hive');
+          return true;
+        } catch {
+          say('Could not save the listing');
+          return false;
+        }
+      }
+      setNest((prev) => [
+        ...prev,
+        {
+          id: nextId.current++,
+          title,
+          price: Math.max(0, Math.round(input.price || 0)),
+          beds: input.beds || 1,
+          baths: input.baths || 1,
+          sqft: 0,
+          hood: input.hood.trim(),
+          lat: base.lat,
+          lng: base.lng,
+          source: 'saved',
+          note: '',
+          reactions: { '💍': [], '🪴': [] },
+          tagged: null,
+        },
+      ]);
+      say('Listing saved to the hive');
+      return true;
+    },
+    [hive.id, say]
+  );
+
+  const addRestaurant = useCallback(
+    async (input: { name: string; cuisine: string; hood: string; mood?: string }) => {
+      const name = input.name.trim();
+      if (!name) {
+        say('Give the place a name');
+        return false;
+      }
+      const base = { ...input, name, lat: seed.NYC_TABLE_CENTER[0] + (Math.random() - 0.5) * 0.04, lng: seed.NYC_TABLE_CENTER[1] + (Math.random() - 0.5) * 0.04 };
+      if (apiLiveRef.current && hive.id !== 'seed-hive') {
+        try {
+          const { restaurant } = await apiAddRestaurant(hive.id, base);
+          setTable((prev) => [...prev, restaurant]);
+          say(name + ' added to the list');
+          return true;
+        } catch {
+          say('Could not add the place');
+          return false;
+        }
+      }
+      setTable((prev) => [
+        ...prev,
+        { id: nextId.current++, name, cuisine: input.cuisine.trim() || 'Dinner', mood: input.mood?.trim() || 'Cozy', price: '$$', hood: input.hood.trim(), lat: base.lat, lng: base.lng, hours: '', tried: false, tier: 'maybe' },
+      ]);
+      say(name + ' added to the list');
+      return true;
+    },
+    [hive.id, say]
+  );
+
+  const setTried = useCallback(
+    (id: number, tried: boolean) => {
+      setTable((prev) => prev.map((t) => (t.id === id ? { ...t, tried } : t)));
+      if (apiLiveRef.current && hive.id !== 'seed-hive') {
+        void apiUpdateRestaurant(hive.id, id, { tried }).catch(() => {
+          setTable((prev) => prev.map((t) => (t.id === id ? { ...t, tried: !tried } : t)));
+          say('Could not update — try again');
+        });
+      }
+    },
+    [hive.id, say]
+  );
 
   const generate = useCallback(() => {
     if (building) return;
@@ -983,6 +1219,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTab,
       tripView,
       setTripView,
+      hive,
+      trips: hive.trips,
+      currentTripId,
+      switchTrip,
+      createTrip,
+      addListing,
+      addRestaurant,
+      setTried,
       trip: tripMeta,
       spots,
       expenses,
@@ -1042,6 +1286,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       light, onboarded, finishOnboarding, replayOnboarding, authenticate, acceptAuthToken, apiLive, tab, tripView,
       signInWithMagic, deleteAccount, pendingInvite, joinInvite, inviteLinkFor,
       tripMeta, spots, expenses, members, fund, ledger, meId, activity, nest, table, addedIds,
+      hive, currentTripId, switchTrip, createTrip, addListing, addRestaurant, setTried,
       setTier, addSpotFromScan, addExpense, contribute, withdraw, settle, addMember, toggleReaction,
       scanText, scanning, scanResult, scan,
       catFilter, tableFilter, expLabel, expAmt,
