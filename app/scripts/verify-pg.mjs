@@ -113,13 +113,18 @@ await aok('magic link: request → dev link → verify creates the account and a
   assert.ok(full.data.spots.length > 0, 'starter trip carries the seed spots');
 });
 
-await aok('GET verify redirects into the app with the session', async () => {
+await aok('GET verify redirects into the app without putting the session in the URL', async () => {
   const req = await call('POST', '/api/auth/magic', { email: 'bo@example.com' });
   const token = new URL(req.data.devLink).searchParams.get('token');
   const r = await call('GET', '/api/auth/magic/verify?token=' + token);
   assert.equal(r.status, 302);
-  assert.match(r.headers.get('location'), /authed=1&token=[a-f0-9]{48}&mode=magic/);
-  assert.match(r.headers.get('set-cookie') || '', /cohive_session=/);
+  const loc = r.headers.get('location') || '';
+  assert.match(loc, /authed=1/);
+  assert.match(loc, /mode=magic/);
+  assert.equal(/[?&]token=/.test(loc), false);
+  const cookies = typeof r.headers.getSetCookie === 'function' ? r.headers.getSetCookie() : [];
+  assert.ok(cookies.some((c) => c.startsWith('cohive_session=')));
+  assert.ok(cookies.some((c) => c.startsWith('cohive_oauth_handoff=') && !/Max-Age=0/.test(c)));
 });
 
 let inviteCode;

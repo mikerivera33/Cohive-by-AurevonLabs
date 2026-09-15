@@ -72,8 +72,9 @@ export function authorizeUrl(provider, state) {
 }
 
 /**
- * Best-effort code exchange. Returns profile fields when secrets exist and
- * the provider responds; otherwise null (caller may mint a provisional session).
+ * Code exchange. Returns a verified profile when secrets exist and the
+ * provider responds with a verified email; otherwise null. Callers must fail
+ * closed — do not mint a session on null.
  */
 export async function exchangeCode(provider, code) {
   const cfg = oauthConfig();
@@ -101,8 +102,11 @@ export async function exchangeCode(provider, code) {
       });
       if (!meRes.ok) return null;
       const me = await meRes.json();
+      const email = String(me.email || '').trim();
+      // Unverified Google emails must not mint a Cohive session.
+      if (!email || me.email_verified !== true) return null;
       return {
-        email: String(me.email || ''),
+        email,
         name: String(me.name || me.given_name || 'You'),
         provider: 'google',
         verified: true,

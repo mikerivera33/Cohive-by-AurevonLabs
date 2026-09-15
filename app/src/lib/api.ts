@@ -159,6 +159,20 @@ export function oauthStartPath(provider: 'google' | 'apple'): string {
   return '/api/auth/oauth/' + provider;
 }
 
+/** Finish an OAuth/magic redirect: the session lives in an HttpOnly handoff cookie, not the URL. */
+export async function apiCompleteOAuthHandoff() {
+  const data = await apiFetch<{
+    token: string;
+    user: { id: string; name: string; email: string };
+    mode?: string;
+  }>('/api/auth/oauth/complete', {
+    method: 'POST',
+    credentials: 'same-origin',
+  });
+  setApiToken(data.token);
+  return data;
+}
+
 export interface MeProfile {
   user: { id: string; name: string; email: string };
   /** The server is the authority on what has been paid for. */
