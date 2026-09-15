@@ -125,6 +125,109 @@ await aok('oauth start without keys returns demo hint', async () => {
   assert.equal(res.data.demo, true);
 });
 
+await aok('oauth callback without code does not mint a session or put a token in the URL', async () => {
+  const res = await api.handle(new Request('http://test/api/auth/oauth/google/callback'));
+  assert.equal(res.status, 302);
+  const loc = res.headers.get('location') || '';
+  assert.match(loc, /auth_error=/);
+  assert.equal(/[?&]token=/.test(loc), false);
+  const cookies = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+  assert.equal(
+    cookies.some((c) => c.startsWith('cohive_oauth_handoff=') && !/Max-Age=0/.test(c)),
+    false
+  );
+});
+
+await aok('oauth callback rejects mismatched state (login CSRF)', async () => {
+  const res = await api.handle(
+    new Request('http://test/api/auth/oauth/google/callback?code=stolen&state=attacker', {
+      headers: { Cookie: 'cohive_oauth_state=' + 'b'.repeat(32) },
+    })
+  );
+  assert.equal(res.status, 302);
+  const loc = res.headers.get('location') || '';
+  assert.match(loc, /auth_error=oauth_denied/);
+  assert.equal(/[?&]token=/.test(loc), false);
+});
+
+await aok('oauth complete without handoff cookie is unauthorized', async () => {
+  const res = await req('POST', '/api/auth/oauth/complete', {});
+  assert.equal(res.status, 401);
+});
+
+await aok('oauth success hands off via HttpOnly cookie, never the URL', async () => {
+  const state = 'c'.repeat(32);
+  const oauthApi = createApi({
+    store: createStore(seed),
+    scanImport,
+    exchangeCode: async () => ({
+      email: 'oauth-alice@cohive.test',
+      name: 'Alice',
+      provider: 'google',
+      verified: true,
+    }),
+  });
+  const cb = await oauthApi.handle(
+    new Request('http://test/api/auth/oauth/google/callback?code=ok&state=' + state, {
+      headers: { Cookie: 'cohive_oauth_state=' + state },
+    })
+  );
+  assert.equal(cb.status, 302);
+  const loc = cb.headers.get('location') || '';
+  assert.match(loc, /authed=1/);
+  assert.equal(/[?&]token=/.test(loc), false);
+  const setCookies = cb.headers.getSetCookie();
+  const handoff = setCookies.find((c) => c.startsWith('cohive_oauth_handoff=') && !/Max-Age=0/.test(c));
+  assert.ok(handoff, 'handoff cookie must be set');
+  assert.match(handoff, /HttpOnly/i);
+  const token = /cohive_oauth_handoff=([^;]+)/.exec(handoff)?.[1];
+  assert.ok(token);
+  assert.equal(loc.includes(token), false);
+
+  const done = await oauthApi.handle(
+    new Request('http://test/api/auth/oauth/complete', {
+      method: 'POST',
+      headers: { Cookie: 'cohive_oauth_handoff=' + token },
+    })
+  );
+  const data = await done.json();
+  assert.equal(done.status, 200);
+  assert.equal(data.token, token);
+  assert.equal(data.user.email, 'oauth-alice@cohive.test');
+
+  const me = await oauthApi.handle(
+    new Request('http://test/api/auth/me', {
+      headers: { Authorization: 'Bearer ' + token },
+    })
+  );
+  const meData = await me.json();
+  assert.equal(me.status, 200);
+  assert.equal(meData.user.email, 'oauth-alice@cohive.test');
+});
+
+await aok('oauth callback fails closed when the provider profile is unverified', async () => {
+  const state = 'd'.repeat(32);
+  const oauthApi = createApi({
+    store: createStore(seed),
+    scanImport,
+    exchangeCode: async () => ({
+      email: 'unverified@cohive.test',
+      name: 'Nope',
+      provider: 'google',
+      verified: false,
+    }),
+  });
+  const cb = await oauthApi.handle(
+    new Request('http://test/api/auth/oauth/google/callback?code=ok&state=' + state, {
+      headers: { Cookie: 'cohive_oauth_state=' + state },
+    })
+  );
+  assert.equal(cb.status, 302);
+  const loc = cb.headers.get('location') || '';
+  assert.match(loc, /auth_error=oauth_failed/);
+  assert.equal(/[?&]token=/.test(loc), false);
+});
+
 await aok('outsider cannot read trip', async () => {
   const b = await req('POST', '/api/auth/register', {
     email: 'outsider@cohive.test',
@@ -514,6 +617,23 @@ console.log('\nidentity + invites (memory store)');
     assert.notEqual(trips.data.trips[0].id, '1', 'not the shared demo trip');
     const bad = await call('POST', '/api/auth/magic', { email: 'nope' });
     assert.equal(bad.status, 400);
+  });
+  await aok('GET magic verify redirects without putting the session token in the URL', async () => {
+    const req = await call('POST', '/api/auth/magic', { email: 'zed-magic@example.com', name: 'Zed' });
+    const magic = new URL(req.data.devLink).searchParams.get('token');
+    const r = await call('GET', '/api/auth/magic/verify?token=' + magic);
+    assert.equal(r.status, 302);
+    const loc = r.headers.get('location') || '';
+    assert.match(loc, /authed=1/);
+    assert.match(loc, /mode=magic/);
+    assert.equal(/[?&]token=/.test(loc), false);
+    const cookies = typeof r.headers.getSetCookie === 'function' ? r.headers.getSetCookie() : [];
+    const handoff = cookies.find((c) => c.startsWith('cohive_oauth_handoff=') && !/Max-Age=0/.test(c));
+    assert.ok(handoff, 'handoff cookie must be set');
+    assert.match(handoff, /HttpOnly/i);
+    const session = /cohive_oauth_handoff=([^;]+)/.exec(handoff)?.[1];
+    assert.ok(session);
+    assert.equal(loc.includes(session), false);
   });
   await aok('invite placeholder → accept binds the user; the member id stays the ledger key', async () => {
     const owner = s.demoAuth({ provider: 'email', name: 'Owner' });
