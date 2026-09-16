@@ -72,6 +72,58 @@ export function authorizeUrl(provider, state) {
 }
 
 /**
+ * Decode a JWT payload without verifying the signature. Callers must only pass
+ * tokens that arrived over TLS from the provider's token endpoint.
+ * @returns {Record<string, unknown> | null}
+ */
+export function decodeJwtPayload(jwt) {
+  const parts = String(jwt || '').split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const json = Buffer.from(parts[1], 'base64url').toString('utf8');
+    const payload = JSON.parse(json);
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Map an Apple `id_token` to a Cohive profile. Apple's token response has no
+ * top-level `email` — the address lives in the id_token. Inventing
+ * `apple-${Date.now()}@…` minted a new account on every Sign in with Apple.
+ *
+ * @param {unknown} idToken
+ * @param {string} clientId
+ * @returns {{ email: string, name: string, provider: 'apple', verified: true } | null}
+ */
+export function appleProfileFromIdToken(idToken, clientId) {
+  const payload = decodeJwtPayload(idToken);
+  if (!payload) return null;
+  if (payload.iss !== 'https://appleid.apple.com') return null;
+  const aud = payload.aud;
+  const audOk = aud === clientId || (Array.isArray(aud) && aud.includes(clientId));
+  if (!clientId || !audOk) return null;
+  const exp = Number(payload.exp);
+  if (Number.isFinite(exp) && exp * 1000 < Date.now() - 60_000) return null;
+  const sub = String(payload.sub || '').trim();
+  if (!sub || sub.length > 255) return null;
+
+  const email = String(payload.email || '').trim().toLowerCase();
+  const emailVerified = payload.email_verified === true || payload.email_verified === 'true';
+  if (email) {
+    if (!email.includes('@') || /\s/.test(email) || !emailVerified) return null;
+    return { email, name: 'You', provider: 'apple', verified: true };
+  }
+
+  // Later Sign Ins may omit email; `sub` is Apple's stable user id.
+  const safe = sub.replace(/[^A-Za-z0-9._-]/g, '').slice(0, 80);
+  if (!safe) return null;
+  return { email: `apple-${safe}@cohive.local`, name: 'You', provider: 'apple', verified: true };
+}
+
+/**
  * Best-effort code exchange. Returns profile fields when secrets exist and
  * the provider responds; otherwise null (caller may mint a provisional session).
  */
@@ -123,13 +175,7 @@ export async function exchangeCode(provider, code) {
       });
       if (!tokenRes.ok) return null;
       const tokens = await tokenRes.json();
-      const emailHint = tokens?.email || '';
-      return {
-        email: String(emailHint || `apple-${Date.now()}@privaterelay.appleid.com`),
-        name: 'You',
-        provider: 'apple',
-        verified: Boolean(tokens.access_token || tokens.id_token),
-      };
+      return appleProfileFromIdToken(tokens.id_token, cfg.apple.clientId);
     }
   } catch {
     return null;

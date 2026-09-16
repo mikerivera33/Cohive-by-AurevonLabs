@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 
 import { createApi } from '../server/api.mjs';
+import { appleProfileFromIdToken } from '../server/oauth.mjs';
 import { createStore } from '../server/store.mjs';
 import { seed } from '../server/seed.mjs';
 import { sanitizeImportText } from '../server/sanitize.mjs';
@@ -124,6 +125,54 @@ await aok('oauth start without keys returns demo hint', async () => {
   assert.equal(res.status, 501);
   assert.equal(res.data.demo, true);
 });
+
+{
+  const clientId = 'com.cohive.app';
+  const jwtFor = (payload) => {
+    const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    return `${enc({ alg: 'none' })}.${enc(payload)}.sig`;
+  };
+  const base = {
+    iss: 'https://appleid.apple.com',
+    aud: clientId,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    sub: '001234.abcDEF.0',
+  };
+
+  await aok('Apple id_token email is the account key (not Date.now())', async () => {
+    const a = appleProfileFromIdToken(
+      jwtFor({ ...base, email: 'maya@icloud.com', email_verified: 'true' }),
+      clientId
+    );
+    const b = appleProfileFromIdToken(
+      jwtFor({ ...base, email: 'maya@icloud.com', email_verified: true }),
+      clientId
+    );
+    assert.equal(a.email, 'maya@icloud.com');
+    assert.equal(b.email, 'maya@icloud.com');
+    assert.equal(a.verified, true);
+    const first = store.oauthUpsert(a);
+    const again = store.oauthUpsert(b);
+    assert.equal(again.user.id, first.user.id, 'second Sign in with Apple must reopen the same account');
+  });
+
+  await aok('Apple Sign In without email stays stable across logins via sub', async () => {
+    const a = appleProfileFromIdToken(jwtFor(base), clientId);
+    const b = appleProfileFromIdToken(jwtFor({ ...base, exp: base.exp + 10 }), clientId);
+    assert.equal(a.email, b.email);
+    assert.match(a.email, /^apple-001234\.abcDEF\.0@cohive\.local$/);
+    const first = store.oauthUpsert(a);
+    const again = store.oauthUpsert(b);
+    assert.equal(again.user.id, first.user.id);
+  });
+
+  await aok('Apple id_token with the wrong audience or unverified email is rejected', async () => {
+    assert.equal(appleProfileFromIdToken(jwtFor({ ...base, email: 'x@y.z', email_verified: true, aud: 'other.app' }), clientId), null);
+    assert.equal(appleProfileFromIdToken(jwtFor({ ...base, email: 'x@y.z', email_verified: false }), clientId), null);
+    assert.equal(appleProfileFromIdToken(jwtFor({ ...base, email: 'x@y.z' }), clientId), null);
+    assert.equal(appleProfileFromIdToken('not-a-jwt', clientId), null);
+  });
+}
 
 await aok('outsider cannot read trip', async () => {
   const b = await req('POST', '/api/auth/register', {
