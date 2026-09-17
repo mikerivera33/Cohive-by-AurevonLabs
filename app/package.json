@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:legal": "node scripts/build-legal.mjs",
     "build:server": "esbuild src/engine/server-entry.ts --bundle --platform=node --format=esm --outfile=server/engine-bundle.mjs --log-level=error",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

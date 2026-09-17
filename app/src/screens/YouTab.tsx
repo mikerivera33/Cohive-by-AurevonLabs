@@ -392,6 +392,15 @@ export function YouTab() {
           Delete my account
         </button>
       ) : null}
+      <p style={{ fontSize: 11.5, color: 'var(--soft)', textAlign: 'center', margin: '18px 0 0', lineHeight: 1.6 }}>
+        <a href="/legal/terms.html" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--soft)' }}>
+          Terms of Service
+        </a>
+        {' · '}
+        <a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--soft)' }}>
+          Privacy Policy
+        </a>
+      </p>
 
       <p style={{ fontSize: 10.5, color: 'var(--soft)', textAlign: 'center', margin: '26px 0 0', lineHeight: 1.6 }}>
         Cohive 1.0 · crafted by <b style={{ color: 'var(--honey)' }}>AurevonLabs</b>
