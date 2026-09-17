@@ -130,7 +130,7 @@ function AppleMark() {
 }
 
 export function Onboarding() {
-  const { finishOnboarding, authenticate, acceptAuthToken, signInWithMagic } = useApp();
+  const { finishOnboarding, authenticate, acceptHandoff, signInWithMagic } = useApp();
   const [step, setStep] = useState<Step>('gateway');
   const [slide, setSlide] = useState(0);
   const [hiveName, setHiveName] = useState('');
@@ -164,34 +164,43 @@ export function Onboarding() {
     };
   }, []);
 
-  // OAuth callback lands with ?token=&authed=1 — accept session and advance.
+  // OAuth / magic-link landings carry ?authed=1 only — the session is in an HttpOnly
+  // cookie. Any ?token= in the URL (an old link, or a crafted one) is scrubbed, never trusted.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
     const authed = params.get('authed');
     const mode = params.get('mode');
-    if (!token && authed !== '1') return;
+    const authError = params.get('auth_error');
+    const scrub = () => {
+      for (const k of ['token', 'ticket', 'authed', 'mode', 'auth_error']) params.delete(k);
+      const next = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (next ? '?' + next : '') + window.location.hash);
+    };
+    if (authError) {
+      setContactError(authError === 'oauth_denied' ? 'Sign-in was not started from this device. Try again.' : 'Sign-in did not complete. Try again.');
+      scrub();
+      return;
+    }
+    if (authed !== '1') {
+      if (params.has('token') || params.has('ticket')) scrub();
+      return;
+    }
     let cancelled = false;
     (async () => {
-      if (token) await acceptAuthToken(token);
+      const ok = await acceptHandoff();
       if (cancelled) return;
-      if (mode === 'oauth' || mode === 'oauth_provisional' || mode === 'magic') {
-        setAuthModeNote(mode);
-      } else if (providers.mode === 'oauth') {
-        setAuthModeNote('oauth');
+      scrub();
+      if (!ok) {
+        setContactError('Sign-in did not complete. Try again.');
+        return;
       }
+      setAuthModeNote(mode === 'magic' ? 'magic' : 'oauth');
       setStep('intro');
-      params.delete('token');
-      params.delete('authed');
-      params.delete('mode');
-      const next = params.toString();
-      const clean = window.location.pathname + (next ? '?' + next : '') + window.location.hash;
-      window.history.replaceState({}, '', clean);
     })();
     return () => {
       cancelled = true;
     };
-  }, [acceptAuthToken, providers.mode]);
+  }, [acceptHandoff]);
 
   const continueDemo = async (provider: AuthProvider, opts?: { contact?: string }) => {
     if (authBusy) return;
@@ -367,6 +376,11 @@ export function Onboarding() {
             </button>
           </div>
 
+          {contactError ? (
+            <p id="gw-auth-error" role="alert" style={{ color: '#F87171', fontSize: 12.5, margin: '14px 0 0', textAlign: 'center' }}>
+              {contactError}
+            </p>
+          ) : null}
           <p
             style={{
               fontSize: 11.5,

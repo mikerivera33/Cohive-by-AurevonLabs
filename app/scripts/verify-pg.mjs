@@ -113,13 +113,34 @@ await aok('magic link: request → dev link → verify creates the account and a
   assert.ok(full.data.spots.length > 0, 'starter trip carries the seed spots');
 });
 
-await aok('GET verify redirects into the app with the session', async () => {
+await aok('GET verify redirects into the app with the session in cookies, never the URL', async () => {
   const req = await call('POST', '/api/auth/magic', { email: 'bo@example.com' });
   const token = new URL(req.data.devLink).searchParams.get('token');
   const r = await call('GET', '/api/auth/magic/verify?token=' + token);
   assert.equal(r.status, 302);
-  assert.match(r.headers.get('location'), /authed=1&token=[a-f0-9]{48}&mode=magic/);
-  assert.match(r.headers.get('set-cookie') || '', /cohive_session=/);
+  assert.match(r.headers.get('location'), /authed=1&mode=magic$/);
+  const set = r.headers.getSetCookie();
+  assert.ok(set.some((c) => c.startsWith('cohive_session=')));
+  const handoff = set.find((c) => c.startsWith('cohive_handoff=') && /HttpOnly/.test(c));
+  assert.ok(handoff);
+  const done = await call('POST', '/api/auth/oauth/complete', undefined, '', { Cookie: handoff.split(';')[0] });
+  assert.equal(done.status, 200);
+  assert.equal(done.data.user.email, 'bo@example.com');
+});
+
+await aok('identity hardening on Postgres: a verified claim evicts a squatter, sub keys the account, demo cannot re-enter', async () => {
+  const squat = await call('POST', '/api/auth/register', { email: 'owner@example.com', name: 'Squatter', password: 'correct horse' });
+  const claimed = await store.oauthUpsert({ provider: 'apple', sub: '001.owner', email: 'owner@example.com', name: 'Owner', verified: true });
+  assert.equal(claimed.user.id, squat.data.user.id);
+  assert.equal((await call('GET', '/api/auth/me', undefined, squat.data.token)).status, 401, 'squatter session revoked');
+  assert.equal((await call('POST', '/api/auth/login', { email: 'owner@example.com', password: 'correct horse' })).status, 401, 'provisional password retired');
+  const again = await store.oauthUpsert({ provider: 'apple', sub: '001.owner', email: '', verified: true });
+  assert.equal(again.user.id, squat.data.user.id, 'Apple sub reopens the account without an email');
+  assert.equal((await store.demoAuth({ provider: 'email', name: 'X', contact: 'owner@example.com' })).error, 'use_registered_login');
+  assert.equal((await store.oauthUpsert({ provider: 'google', sub: 'g', email: 'z@example.com', verified: false })).error, 'unverified_identity');
+  const fresh = await store.oauthUpsert({ provider: 'google', sub: 'g-fresh', email: 'fresh@example.com', name: 'Fresh', verified: true });
+  assert.equal((await call('GET', '/api/trips', undefined, fresh.token)).data.trips.length, 1, 'starts with its own trip');
+  assert.equal((await call('GET', '/api/trips/1', undefined, fresh.token)).status, 403, 'never the shared seed hive');
 });
 
 let inviteCode;
