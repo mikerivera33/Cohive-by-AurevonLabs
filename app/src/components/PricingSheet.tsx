@@ -240,6 +240,17 @@ export function PricingSheet() {
         <p style={{ fontSize: 10, color: 'var(--soft)', textAlign: 'center', margin: '8px 0 0' }}>
           Demo — nothing here charges anything.
         </p>
+        <p style={{ fontSize: 11, color: 'var(--soft)', textAlign: 'center', margin: '10px 0 0', lineHeight: 1.5 }}>
+          By subscribing you agree to the{' '}
+          <a href="/legal/terms.html" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--honey)' }}>
+            Terms
+          </a>{' '}
+          and{' '}
+          <a href="/legal/privacy.html" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--honey)' }}>
+            Privacy Policy
+          </a>
+          .
+        </p>
       </div>
     </div>
   );

@@ -212,6 +212,13 @@ stores `venmo:@name`, `cashapp:$tag` or `paypal:name` (`''` clears); members exp
 Budget view turns each "A pays B" line into a one-tap Venmo / Cash App / PayPal link
 (`src/lib/payLinks.ts`) pre-filled with the amount and trip name.
 
+### Legal pages
+
+`legal/TERMS_OF_SERVICE.md` and `legal/PRIVACY_POLICY.md` are the source of truth; `npm run build:legal`
+renders them to `public/legal/terms.html` and `public/legal/privacy.html` (linked from the pricing sheet
+and the You tab; both stores and the Google consent screen need those URLs). Edit the markdown, rerun
+the script, commit both. Have counsel review before launch.
+
 ### Live updates
 
 Every hive carries a change counter (`hives.version` on Postgres, migration 005). The API bumps it
