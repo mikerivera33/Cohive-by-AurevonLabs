@@ -248,6 +248,33 @@ export function createStore(seed = null, options = {}) {
     if (token && sessions.delete(token)) schedulePersist();
   }
 
+  function revokeSessions(userId) {
+    for (const [t, sess] of sessions) if (sess.userId === userId) sessions.delete(t);
+  }
+
+  /**
+   * First proof of email ownership (magic link or a verified provider) claims an
+   * account that was only ever registered or demo-squatted: whoever held it
+   * unproven loses every session and the provisional password.
+   */
+  function claimUnverified(user) {
+    if (user.oauthVerified) return;
+    revokeSessions(user.id);
+    Object.assign(user, hashPassword(newToken()), { oauthVerified: true });
+  }
+
+  /** A real account starts with its own hive and trip, never the shared demo one. */
+  function provisionStarter(user) {
+    const hive = createHive(user.id, { name: `${user.name}’s hive` }).hive;
+    createTrip(user.id, { ...(seed?.trip || {}), name: 'My first trip', hiveId: hive.id }, { seedSpots: true });
+  }
+
+  function userBySub(provider, sub) {
+    if (!sub) return null;
+    for (const u of users.values()) if (u.provider === provider && u.providerSub === sub && !u.deletedAt) return u;
+    return null;
+  }
+
   function insertUser(u) {
     const user = { createdAt: now(), ...u };
     users.set(user.email, user);
@@ -292,26 +319,41 @@ export function createStore(seed = null, options = {}) {
     else if (p === 'phone' && rawContact) email = `phone-${rawContact.replace(/[^\d+]/g, '').slice(0, 20) || id().slice(0, 8)}@cohive.local`;
     else email = `demo-${p}-${id().slice(0, 8)}@cohive.local`;
     let user = users.get(email);
+    // A demo session may only re-enter another demo account — never a registered (password) or proven one.
+    if (user && (!user.provider || user.oauthVerified || user.deletedAt)) return err('use_registered_login', 401);
     if (!user) user = insertUser({ id: id(), email, name: display, ...hashPassword(newToken()), provider: p, contact: rawContact || undefined, referredBy: referrerFor(ref)?.id || null });
     ensureDemoMembership(user);
     return { user: publicUser(user), token: createSession(user.id), mode: 'demo' };
   }
 
-  function oauthUpsert({ provider, email, name, verified }) {
+  /**
+   * Sign in with a provider-verified identity. Refuses anything unverified; the
+   * provider's stable `sub` is the identity (Apple omits the email on repeat
+   * sign-ins), the email links to an existing account, and an unproven holder
+   * of that email is evicted (`claimUnverified`).
+   */
+  function oauthUpsert({ provider, email, name, verified, sub }) {
     const p = provider === 'apple' ? 'apple' : 'google';
+    if (!verified) return err('unverified_identity', 401);
+    const providerSub = cleanText(sub, 255) || null;
     const norm = normalizeEmail(email);
-    const mail = norm || `oauth-${p}-${id().slice(0, 8)}@cohive.local`;
-    const display = cleanText(name || 'You', 64) || 'You';
-    let user = users.get(mail);
+    const display = cleanText(name, 64);
+    let user = userBySub(p, providerSub) || (norm ? users.get(norm) : null) || null;
+    if (user?.deletedAt) return err('account_deleted', 410);
+    let created = false;
     if (!user) {
-      user = insertUser({ id: id(), email: mail, name: display, ...hashPassword(newToken()), provider: p, oauthVerified: Boolean(verified) });
+      const mail = norm || `${p}-${sha256(providerSub || id()).slice(0, 16)}@cohive.local`;
+      if (users.has(mail)) return err('email_taken', 409);
+      user = insertUser({ id: id(), email: mail, name: display || (norm ? norm.split('@')[0] : 'You'), ...hashPassword(newToken()), provider: p, providerSub, oauthVerified: true });
+      created = true;
+      provisionStarter(user);
     } else {
+      claimUnverified(user);
       user.provider = p;
-      if (display && display !== 'You') user.name = display;
-      user.oauthVerified = Boolean(verified);
+      if (providerSub) user.providerSub = providerSub;
     }
-    ensureDemoMembership(user);
-    return { user: publicUser(user), token: createSession(user.id), mode: verified ? 'oauth' : 'oauth_provisional' };
+    schedulePersist();
+    return { user: publicUser(user), token: createSession(user.id), mode: 'oauth', created };
   }
 
   function ensureDemoMembership(user) {
@@ -349,13 +391,11 @@ export function createStore(seed = null, options = {}) {
     if (!user) {
       user = insertUser({ id: id(), email: m.email, name: m.name || m.email.split('@')[0], ...hashPassword(newToken()), provider: 'email', oauthVerified: true, referredBy: referrerFor(m.ref)?.id || null });
       created = true;
-      // A real account starts with its own hive and trip, not the shared demo one.
-      const hive = createHive(user.id, { name: `${user.name}’s hive` }).hive;
-      createTrip(user.id, { ...(seed?.trip || {}), name: 'My first trip', hiveId: hive.id }, { seedSpots: true });
+      provisionStarter(user);
     } else if (user.deletedAt) {
       return err('account_deleted', 410);
     } else {
-      user.oauthVerified = true;
+      claimUnverified(user);
     }
     return { user: publicUser(user), token: createSession(user.id), mode: 'magic', created };
   }

@@ -11,8 +11,15 @@ import { sanitizeImportText } from './sanitize.mjs';
 import { takeToken } from './rateLimit.mjs';
 import { MAX_JSON_BODY_BYTES, parseJsonBody } from './safeJson.mjs';
 import { scanImport as defaultScanImport } from './engine-bundle.mjs';
-import { authorizeUrl, exchangeCode, oauthConfig, providersPayload } from './oauth.mjs';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import {
+  appleNameFromUserField,
+  authorizeUrl,
+  demoAllowed,
+  exchangeCode as defaultExchangeCode,
+  oauthConfig,
+  providersPayload,
+} from './oauth.mjs';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import { mailConfigured, sendMagicLink } from './mail.mjs';
 
@@ -32,6 +39,13 @@ const CORS = {
 
 const SESSION_COOKIE = 'cohive_session';
 const COOKIE_MAX_AGE = 30 * 24 * 60 * 60;
+/** Binds an OAuth callback to the browser that started it (login CSRF). */
+const OAUTH_STATE_COOKIE = 'cohive_oauth_state';
+const OAUTH_STATE_MAX_AGE = 10 * 60;
+/** Carries a fresh session from a redirect landing to the SPA — never the URL. */
+const HANDOFF_COOKIE = 'cohive_handoff';
+const HANDOFF_PATH = '/api/auth/oauth/complete';
+const HANDOFF_MAX_AGE = 120;
 
 /** HttpOnly session cookie for the web app; native clients keep using Bearer. */
 function sessionCookie(token) {
@@ -41,10 +55,45 @@ function sessionCookie(token) {
     : `${SESSION_COOKIE}=; Path=/api; Max-Age=0; HttpOnly; SameSite=Lax${secure}`;
 }
 
-function cookieToken(reqHeaders) {
+function cookieValue(reqHeaders, name) {
   const raw = String(reqHeaders.get?.('cookie') || reqHeaders.cookie || '');
-  const m = raw.match(new RegExp('(?:^|;\\s*)' + SESSION_COOKIE + '=([a-f0-9]{48})'));
-  return m ? m[1] : '';
+  const m = raw.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
+  return m ? m[1].trim() : '';
+}
+
+function cookieToken(reqHeaders) {
+  const v = cookieValue(reqHeaders, SESSION_COOKIE);
+  return /^[a-f0-9]{48}$/.test(v) ? v : '';
+}
+
+/** HttpOnly cookie scoped to one path. `sameSite` None is only valid over https (Apple's form_post callback needs it). */
+function scopedCookie(name, value, { path, maxAge, sameSite = 'Lax' }) {
+  const secure = oauthConfig().secure;
+  const site = sameSite === 'None' && !secure ? 'Lax' : sameSite;
+  return `${name}=${value}; Path=${path}; Max-Age=${value ? maxAge : 0}; HttpOnly; SameSite=${site}${secure ? '; Secure' : ''}`;
+}
+const stateCookie = (v) => scopedCookie(OAUTH_STATE_COOKIE, v, { path: '/api/auth/oauth', maxAge: OAUTH_STATE_MAX_AGE, sameSite: 'None' });
+const handoffCookie = (v) => scopedCookie(HANDOFF_COOKIE, v, { path: HANDOFF_PATH, maxAge: HANDOFF_MAX_AGE });
+
+function equalSecret(a, b) {
+  const x = Buffer.from(String(a || ''));
+  const y = Buffer.from(String(b || ''));
+  return x.length > 0 && x.length === y.length && timingSafeEqual(x, y);
+}
+
+/** Attach one or more Set-Cookie headers to a result. */
+function withCookies(result, cookies) {
+  return { ...result, headers: { ...result.headers, 'Set-Cookie': cookies } };
+}
+
+/** Result headers → fetch Headers (arrays become repeated Set-Cookie lines). */
+function toFetchHeaders(resultHeaders) {
+  const out = new Headers();
+  for (const [k, v] of Object.entries(resultHeaders || {})) {
+    if (Array.isArray(v)) for (const item of v) out.append(k, item);
+    else if (v != null && v !== '') out.set(k, String(v));
+  }
+  return out;
 }
 
 function json(status, body, extraHeaders = {}) {
@@ -96,6 +145,7 @@ function clientIp(reqHeaders, fallback = '0.0.0.0') {
 export function createApi(deps = {}) {
   const store = deps.store || createStore(seed);
   const scanImportFn = deps.scanImport || defaultScanImport;
+  const exchangeCode = deps.exchangeCode || defaultExchangeCode;
 
   /** Which hive a request touches, so its change counter can be bumped / stamped. */
   async function hiveOfPath(path, method, parsed) {
@@ -187,6 +237,7 @@ export function createApi(deps = {}) {
     if (method === 'POST' && path === '/api/auth/demo') {
       const limited = rateLimitAuth();
       if (limited) return limited;
+      if (!demoAllowed()) return json(403, { error: 'demo_disabled' });
       const result = await store.demoAuth(body);
       if (result.error) return json(result.status, { error: result.error });
       return json(201, result, { 'Set-Cookie': sessionCookie(result.token) });
@@ -217,9 +268,8 @@ export function createApi(deps = {}) {
       const base = oauthConfig().publicBase;
       const result = await store.consumeMagicLink(String(query.get('token') || ''));
       if (result.error) return redirect(`${base}/?start=onboarding&auth_error=${encodeURIComponent(result.error)}`);
-      return redirect(`${base}/?start=onboarding&authed=1&token=${encodeURIComponent(result.token)}&mode=magic`, {
-        'Set-Cookie': sessionCookie(result.token),
-      });
+      // The session rides in HttpOnly cookies only — never the landing URL (logs, history, Referer).
+      return withCookies(redirect(`${base}/?start=onboarding&authed=1&mode=magic`), [sessionCookie(result.token), handoffCookie(result.token)]);
     }
     if (method === 'POST' && path === '/api/auth/magic/verify') {
       const limited = rateLimitAuth();
@@ -231,41 +281,46 @@ export function createApi(deps = {}) {
     if (method === 'GET' && path === '/api/auth/providers') {
       return json(200, providersPayload());
     }
-    if (method === 'GET' && path === '/api/auth/oauth/google') {
+    const oauthStart = path.match(/^\/api\/auth\/oauth\/(google|apple)$/);
+    if (method === 'GET' && oauthStart) {
       const limited = rateLimitAuth();
       if (limited) return limited;
-      const url = authorizeUrl('google', 'cohive');
-      if (!url) return json(501, { error: 'oauth_not_configured', provider: 'google', demo: true });
-      return redirect(url);
+      const state = randomBytes(16).toString('hex');
+      const url = authorizeUrl(oauthStart[1], state);
+      if (!url) return json(501, { error: 'oauth_not_configured', provider: oauthStart[1], demo: demoAllowed() });
+      return withCookies(redirect(url), [stateCookie(state)]);
     }
-    if (method === 'GET' && path === '/api/auth/oauth/apple') {
+    const oauthCallback = path.match(/^\/api\/auth\/oauth\/(google|apple)\/callback$/);
+    if ((method === 'GET' || method === 'POST') && oauthCallback) {
       const limited = rateLimitAuth();
       if (limited) return limited;
-      const url = authorizeUrl('apple', 'cohive');
-      if (!url) return json(501, { error: 'oauth_not_configured', provider: 'apple', demo: true });
-      return redirect(url);
-    }
-    if (
-      (method === 'GET' || method === 'POST') &&
-      (path === '/api/auth/oauth/google/callback' || path === '/api/auth/oauth/apple/callback')
-    ) {
-      const limited = rateLimitAuth();
-      if (limited) return limited;
-      const provider = path.includes('/apple/') ? 'apple' : 'google';
-      const cfg = oauthConfig();
+      const provider = oauthCallback[1];
+      const base = oauthConfig().publicBase;
+      const fail = (reason) => withCookies(redirect(`${base}/?start=onboarding&auth_error=${reason}`), [stateCookie('')]);
+      // Fail closed: the callback must carry the state this browser started with, a code, and a
+      // verified identity. Nothing else mints a session.
+      const presented = String(body.state || query.get('state') || '').trim();
+      if (!equalSecret(cookieValue(headers, OAUTH_STATE_COOKIE), presented)) return fail('oauth_denied');
       const code = String(body.code || query.get('code') || '').trim();
-      const appHome = `${cfg.publicBase}/?start=onboarding&authed=1`;
-      const profile = await exchangeCode(provider, code);
-      const result = profile
-        ? await store.oauthUpsert(profile)
-        : await store.oauthUpsert({
-            provider,
-            email: '',
-            name: 'You',
-            verified: false,
-          });
-      const dest = `${appHome}&token=${encodeURIComponent(result.token)}&mode=${encodeURIComponent(result.mode)}`;
-      return redirect(dest, { 'Set-Cookie': sessionCookie(result.token) });
+      if (!code) return fail('oauth_failed');
+      const profile = await exchangeCode(provider, code, { user: body.user });
+      if (!profile?.verified || !profile.sub) return fail('oauth_failed');
+      const result = await store.oauthUpsert({ ...profile, name: profile.name || appleNameFromUserField(body.user) });
+      if (result.error) return fail(result.error);
+      return withCookies(redirect(`${base}/?start=onboarding&authed=1&mode=oauth`), [
+        stateCookie(''),
+        sessionCookie(result.token),
+        handoffCookie(result.token),
+      ]);
+    }
+    if (method === 'POST' && path === HANDOFF_PATH) {
+      // Single use: the SPA trades the short-lived handoff cookie for its Bearer token.
+      const limited = rateLimitAuth();
+      if (limited) return limited;
+      const handoff = cookieValue(headers, HANDOFF_COOKIE);
+      const sessionUser = /^[a-f0-9]{48}$/.test(handoff) ? await store.getSessionUser(handoff) : null;
+      if (!sessionUser) return withCookies(json(401, { error: 'unauthorized' }), [handoffCookie('')]);
+      return withCookies(json(200, { user: store.publicUser(sessionUser), token: handoff }), [handoffCookie('')]);
     }
     if (method === 'POST' && path === '/api/auth/logout') {
       await store.logout(token);
@@ -527,7 +582,7 @@ export function createApi(deps = {}) {
       ip,
       url.search
     );
-    return new Response(result.body, { status: result.status, headers: result.headers });
+    return new Response(result.body, { status: result.status, headers: toFetchHeaders(result.headers) });
   }
 
   /** node:http entry. */

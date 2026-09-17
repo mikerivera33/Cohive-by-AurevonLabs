@@ -92,6 +92,7 @@ const userRow = (u) =>
     provider: u.provider,
     contact: u.contact,
     oauthVerified: u.oauth_verified,
+    providerSub: u.provider_sub || null,
     referralCode: u.referral_code || null,
     referredBy: u.referred_by || null,
     payHandle: u.pay_handle || null,
@@ -145,9 +146,9 @@ export async function createPgStore(seed, { url }) {
   }
   async function insertUser(c, u) {
     await c.query(
-      `INSERT INTO users (id, email, name, salt, hash, provider, contact, oauth_verified, referred_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [u.id, u.email, u.name, u.salt ?? null, u.hash ?? null, u.provider ?? null, u.contact ?? null, Boolean(u.oauthVerified), u.referredBy ?? null]
+      `INSERT INTO users (id, email, name, salt, hash, provider, contact, oauth_verified, referred_by, provider_sub)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [u.id, u.email, u.name, u.salt ?? null, u.hash ?? null, u.provider ?? null, u.contact ?? null, Boolean(u.oauthVerified), u.referredBy ?? null, u.providerSub ?? null]
     );
     return { ...u, createdAt: new Date().toISOString() };
   }
@@ -179,6 +180,31 @@ export async function createPgStore(seed, { url }) {
     if (token && TOKEN_RE.test(token)) await db.query('DELETE FROM sessions WHERE token = $1', [token]);
   }
 
+  async function userBySub(provider, sub, c = db) {
+    if (!sub) return null;
+    const { rows } = await c.query('SELECT * FROM users WHERE provider = $1 AND provider_sub = $2 AND deleted_at IS NULL', [provider, sub]);
+    return userRow(rows[0]) || null;
+  }
+
+  /** First proof of email ownership evicts an unproven (register / demo) holder: sessions gone, password rotated. */
+  async function claimUnverified(c, user) {
+    if (user.oauthVerified) return;
+    const pw = hashPassword(newToken());
+    await c.query('DELETE FROM sessions WHERE user_id = $1', [user.id]);
+    await c.query('UPDATE users SET salt = $2, hash = $3, oauth_verified = true WHERE id = $1', [user.id, pw.salt, pw.hash]);
+    user.oauthVerified = true;
+  }
+
+  /** A real account starts with its own hive and trip, never the shared demo one. */
+  async function provisionStarter(c, user) {
+    const hive = await insertHive(c, hiveFromBody({ name: `${user.name}’s hive` }, user.id, newId()), user);
+    const t = { ...tripFromBody({ ...(seed?.trip || {}), name: 'My first trip' }, user.id, newId()), hiveId: hive.id };
+    await insertTripRow(c, t);
+    for (const sp of seed?.tripSpots || []) {
+      await c.query('INSERT INTO spots (trip_id, id, data) VALUES ($1, $2, $3)', [t.id, sp.id, JSON.stringify({ ...sp, tier: null, votes: 0 })]);
+    }
+  }
+
   async function register({ email, name, password, ref }) {
     const norm = normalizeEmail(email);
     if (!norm) return err('invalid_email', 400);
@@ -206,24 +232,36 @@ export async function createPgStore(seed, { url }) {
     else if (p === 'phone' && rawContact) email = `phone-${rawContact.replace(/[^\d+]/g, '').slice(0, 20) || newId().slice(0, 8)}@cohive.local`;
     else email = `demo-${p}-${newId().slice(0, 8)}@cohive.local`;
     let user = await userByEmail(email);
+    // A demo session may only re-enter another demo account — never a registered (password) or proven one.
+    if (user && (!user.provider || user.oauthVerified || user.deletedAt)) return err('use_registered_login', 401);
     if (!user) user = await insertUser(db, { id: newId(), email, name: display, ...hashPassword(newToken()), provider: p, contact: rawContact || null, referredBy: (await referrerFor(ref))?.id || null });
     await ensureDemoMembership(user);
     return { user: publicUser(user), token: await createSession(user.id), mode: 'demo' };
   }
 
-  async function oauthUpsert({ provider, email, name, verified }) {
+  /** Provider-verified sign-in — same rules as the memory store (see its `oauthUpsert`). */
+  async function oauthUpsert({ provider, email, name, verified, sub }) {
     const p = provider === 'apple' ? 'apple' : 'google';
+    if (!verified) return err('unverified_identity', 401);
+    const providerSub = cleanText(sub, 255) || null;
     const norm = normalizeEmail(email);
-    const mail = norm || `oauth-${p}-${newId().slice(0, 8)}@cohive.local`;
-    const display = cleanText(name || 'You', 64) || 'You';
-    let user = await userByEmail(mail);
-    if (!user) {
-      user = await insertUser(db, { id: newId(), email: mail, name: display, ...hashPassword(newToken()), provider: p, oauthVerified: Boolean(verified) });
-    } else {
-      await db.query("UPDATE users SET provider = $2, oauth_verified = $3, name = CASE WHEN $4 <> 'You' THEN $4 ELSE name END WHERE id = $1", [user.id, p, Boolean(verified), display]);
-    }
-    await ensureDemoMembership(user);
-    return { user: publicUser(user), token: await createSession(user.id), mode: verified ? 'oauth' : 'oauth_provisional' };
+    const display = cleanText(name, 64);
+    return db.tx(async (c) => {
+      let user = (await userBySub(p, providerSub, c)) || (norm ? await userByEmail(norm, c) : null);
+      if (user?.deletedAt) return err('account_deleted', 410);
+      let created = false;
+      if (!user) {
+        const mail = norm || `${p}-${sha256(providerSub || newId()).slice(0, 16)}@cohive.local`;
+        if (await userByEmail(mail, c)) return err('email_taken', 409);
+        user = await insertUser(c, { id: newId(), email: mail, name: display || (norm ? norm.split('@')[0] : 'You'), ...hashPassword(newToken()), provider: p, providerSub, oauthVerified: true });
+        created = true;
+        await provisionStarter(c, user);
+      } else {
+        await claimUnverified(c, user);
+        await c.query('UPDATE users SET provider = $2, provider_sub = COALESCE($3, provider_sub) WHERE id = $1', [user.id, p, providerSub]);
+      }
+      return { user: publicUser(user), token: await createSession(user.id, c), mode: 'oauth', created };
+    });
   }
 
   /** Demo sign-ins join the shared seed hive, as in the in-memory store. */
@@ -271,17 +309,11 @@ export async function createPgStore(seed, { url }) {
       if (!user) {
         user = await insertUser(c, { id: newId(), email, name: meta.name || email.split('@')[0], provider: 'email', oauthVerified: true, referredBy: (await referrerFor(meta.ref, c))?.id || null });
         created = true;
-        // A real account starts with its own hive and trip, not the shared demo one.
-        const hive = await insertHive(c, hiveFromBody({ name: `${user.name}’s hive` }, user.id, newId()), user);
-        const t = { ...tripFromBody({ ...(seed?.trip || {}), name: 'My first trip' }, user.id, newId()), hiveId: hive.id };
-        await insertTripRow(c, t);
-        for (const sp of seed?.tripSpots || []) {
-          await c.query('INSERT INTO spots (trip_id, id, data) VALUES ($1, $2, $3)', [t.id, sp.id, JSON.stringify({ ...sp, tier: null, votes: 0 })]);
-        }
+        await provisionStarter(c, user);
       } else if (user.deletedAt) {
         return err('account_deleted', 410);
       } else {
-        await c.query('UPDATE users SET oauth_verified = true WHERE id = $1', [user.id]);
+        await claimUnverified(c, user);
       }
       return { user: publicUser(user), token: await createSession(user.id, c), mode: 'magic', created };
     });

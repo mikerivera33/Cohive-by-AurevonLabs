@@ -148,7 +148,7 @@ The API (`server/`) runs on one of two stores behind the same interface:
 
 ```bash
 # local Postgres for the store checks
-DATABASE_URL=postgres://cohive:cohive@127.0.0.1:5432/cohive_test npm run verify:pg   # 19 checks
+DATABASE_URL=postgres://cohive:cohive@127.0.0.1:5432/cohive_test npm run verify:pg   # 20 checks
 DATABASE_URL=... npm start                                                             # API + static app on :8080
 ```
 
@@ -158,13 +158,36 @@ point), `RESEND_API_KEY` + `COHIVE_MAIL_FROM` (magic-link mail; without them the
 
 ### Identity
 
-- **Magic links** — `POST /api/auth/magic {email}` mails a one-tap link; `GET /api/auth/magic/verify`
-  redirects into the app with a session. Links are hashed at rest, single-use, 15-minute expiry.
-  A new account starts with its own trip, never the shared demo trip.
+A session is minted only from a proof, and the rules are the same in both stores:
+
+- **Proofs** — a password (`register` / `login`), a consumed magic link (email ownership), or a
+  provider identity that arrives verified: Google userinfo `email_verified`, Apple `id_token`
+  signature-checked against Apple's JWKS with iss / aud / exp and `email_verified`. An unverified
+  profile never mints a session (`unverified_identity`); the OAuth callback fails closed on a
+  missing or mismatched `state`, a missing `code` or a failed exchange (`auth_error=…`).
+- **Login CSRF** — `GET /api/auth/oauth/:provider` sets a random `state` in a 10-minute HttpOnly
+  cookie and the callback must echo it (`SameSite=None; Secure` over https, because Apple's
+  `form_post` callback is a cross-site POST).
+- **No tokens in URLs** — OAuth and `GET /api/auth/magic/verify` land on `/?authed=1&mode=…` with
+  the session in the `cohive_session` cookie plus a 2-minute `cohive_handoff` cookie scoped to
+  `POST /api/auth/oauth/complete`, which trades it for the Bearer token native clients keep. The
+  app scrubs and ignores any `?token=`.
+- **Identity** — the provider's stable `sub` keys an OAuth account (`users.provider_sub`, migration
+  006): Apple omits the email on repeat sign-ins, and a Google address change does not fork the
+  account. Apple's first-login `user` form field supplies the display name.
+- **A verified proof claims an unproven email** — `register` never verifies the address, so an
+  account that was only registered or demo-created is provisional. The first magic link or
+  verified provider sign-in for that email keeps the account, revokes every existing session and
+  retires the provisional password (`claimUnverified`), so a squatter cannot ride along.
+- **Demo sessions** (`POST /api/auth/demo`, the fallback when no provider keys exist) are unproven:
+  they may only re-enter other demo accounts (`use_registered_login` otherwise), only they join the
+  shared seed hive, and they are refused in production unless `COHIVE_ALLOW_DEMO=1`
+  (`demo_disabled`). Verified and magic-link sign-ups start with their own hive and trip.
+- **Apple client secret** — a static `APPLE_CLIENT_SECRET`, or minted from `APPLE_TEAM_ID` +
+  `APPLE_KEY_ID` + `APPLE_PRIVATE_KEY` as an ES256 JWT renewed daily (Apple caps it at 6 months).
 - **Sessions** — Bearer token for native, plus an `HttpOnly; SameSite=Lax` cookie for the web app.
 - **Account deletion** — `DELETE /api/auth/me` revokes sessions and anonymises the profile; trip
   ledgers keep a "Deleted member" placeholder so balances still add up.
-- Google/Apple OAuth activates when the client IDs are configured (`server/oauth.mjs`).
 
 ### Entitlements (payments groundwork)
 

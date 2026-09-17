@@ -125,6 +125,187 @@ await aok('oauth start without keys returns demo hint', async () => {
   assert.equal(res.data.demo, true);
 });
 
+console.log('\nidentity hardening');
+{
+  resetRateLimits();
+  const { createSign, generateKeyPairSync, verify } = await import('node:crypto');
+  const { appleClientSecret, appleProfileFromIdToken, decodeJwt } = await import('../server/oauth.mjs');
+  const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwk = { ...rsa.publicKey.export({ format: 'jwk' }), kid: 'k1', alg: 'RS256', use: 'sig' };
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const sign = (payload, kid = 'k1') => {
+    const input = `${b64({ alg: 'RS256', kid })}.${b64(payload)}`;
+    return input + '.' + createSign('sha256').update(input).sign(rsa.privateKey).toString('base64url');
+  };
+  const CLIENT = 'com.aurevonlabs.cohive.web';
+  const claims = { iss: 'https://appleid.apple.com', aud: CLIENT, exp: Math.floor(Date.now() / 1000) + 600, sub: '001234.abc.9' };
+
+  await aok('Apple id_token: signature, iss, aud, exp and email_verified are all enforced', async () => {
+    const good = appleProfileFromIdToken(sign({ ...claims, email: 'Maya@iCloud.com', email_verified: 'true' }), CLIENT, [jwk]);
+    assert.deepEqual(good, { provider: 'apple', sub: '001234.abc.9', email: 'maya@icloud.com', name: '', verified: true });
+    assert.equal(appleProfileFromIdToken(sign(claims), CLIENT, [jwk]).email, '', 'no email → keyed by sub');
+    const other = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const forged = `${b64({ alg: 'RS256', kid: 'k1' })}.${b64(claims)}.` + createSign('sha256').update('x').sign(other.privateKey).toString('base64url');
+    const bad = [
+      forged,
+      sign({ ...claims, aud: 'other.app' }),
+      sign({ ...claims, iss: 'https://evil.example' }),
+      sign({ ...claims, exp: 1 }),
+      sign({ ...claims, email: 'x@y.z', email_verified: false }),
+      sign(claims, 'k2'),
+      `${b64({ alg: 'none', kid: 'k1' })}.${b64(claims)}.`,
+      'not-a-jwt',
+    ];
+    for (const t of bad) assert.equal(appleProfileFromIdToken(t, CLIENT, [jwk]), null);
+    assert.equal(appleProfileFromIdToken(sign(claims), '', [jwk]), null, 'no client id → nothing verifies');
+  });
+
+  await aok('Apple client secret is minted from the .p8 key (ES256, ≤ 6 months) and cached', async () => {
+    const ec = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    Object.assign(process.env, {
+      APPLE_CLIENT_ID: CLIENT,
+      APPLE_TEAM_ID: 'TEAM123456',
+      APPLE_KEY_ID: 'KEY1234567',
+      APPLE_PRIVATE_KEY: ec.privateKey.export({ type: 'pkcs8', format: 'pem' }).replace(/\n/g, '\\n'),
+    });
+    try {
+      const jwt = appleClientSecret();
+      const t = decodeJwt(jwt);
+      assert.deepEqual([t.header.alg, t.header.kid, t.payload.iss, t.payload.sub, t.payload.aud], ['ES256', 'KEY1234567', 'TEAM123456', CLIENT, 'https://appleid.apple.com']);
+      assert.ok(t.payload.exp - t.payload.iat <= 180 * 86_400);
+      assert.ok(verify('sha256', Buffer.from(t.signingInput), { key: ec.publicKey, dsaEncoding: 'ieee-p1363' }, t.signature));
+      assert.equal(appleClientSecret(), jwt, 'cached until renewal');
+    } finally {
+      for (const k of ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID', 'APPLE_PRIVATE_KEY']) delete process.env[k];
+    }
+  });
+
+  const state = 'a'.repeat(32);
+  const fakeApi = (profile) => createApi({ store: createStore(seed), scanImport, exchangeCode: async () => profile });
+  const cookies = (res) => res.headers.getSetCookie();
+  const liveCookie = (res, name) => cookies(res).find((c) => c.startsWith(name + '=') && !/Max-Age=0/.test(c)) || '';
+  const cleared = (res, name) => cookies(res).some((c) => c.startsWith(name + '=') && /Max-Age=0/.test(c));
+  const callback = (a, provider, init) => a.handle(new Request(`http://test/api/auth/oauth/${provider}/callback${init.qs || ''}`, { method: init.method || 'GET', headers: { Cookie: `cohive_oauth_state=${init.state ?? state}`, ...(init.headers || {}) }, body: init.body }));
+
+  await aok('oauth start sets a browser-bound state cookie and echoes it to the provider', async () => {
+    process.env.GOOGLE_CLIENT_ID = 'gid.apps.googleusercontent.com';
+    try {
+      const r = await req('GET', '/api/auth/oauth/google');
+      assert.equal(r.status, 302);
+      const st = new URL(r.headers.get('location')).searchParams.get('state');
+      assert.match(st, /^[a-f0-9]{32}$/);
+      const c = liveCookie(r, 'cohive_oauth_state');
+      assert.ok(c.includes('=' + st + ';'));
+      assert.match(c, /HttpOnly/);
+      assert.match(c, /Path=\/api\/auth\/oauth;/);
+    } finally {
+      delete process.env.GOOGLE_CLIENT_ID;
+    }
+  });
+
+  await aok('oauth callback fails closed: no state, wrong state, no code or an unverified profile mint nothing', async () => {
+    const a = fakeApi({ provider: 'google', sub: 's1', email: 'v@x.io', name: 'V', verified: true });
+    const runs = [
+      [await a.handle(new Request('http://test/api/auth/oauth/google/callback?code=c&state=' + state)), 'oauth_denied'],
+      [await callback(a, 'google', { qs: '?code=c&state=' + 'b'.repeat(32) }), 'oauth_denied'],
+      [await callback(a, 'google', { qs: '?state=' + state }), 'oauth_failed'],
+      [await callback(fakeApi({ provider: 'google', sub: 's1', email: 'v@x.io', verified: false }), 'google', { qs: '?code=c&state=' + state }), 'oauth_failed'],
+      [await callback(fakeApi(null), 'google', { qs: '?code=c&state=' + state }), 'oauth_failed'],
+    ];
+    for (const [r, reason] of runs) {
+      assert.equal(r.status, 302);
+      const loc = r.headers.get('location');
+      assert.ok(loc.includes('auth_error=' + reason), loc);
+      assert.equal(/[?&]token=/.test(loc), false);
+      assert.equal(liveCookie(r, 'cohive_session'), '');
+      assert.equal(liveCookie(r, 'cohive_handoff'), '');
+    }
+    assert.equal(a.store._snapshot().users.length, 0, 'no account was created');
+  });
+
+  await aok('oauth success hands the session over in HttpOnly cookies, never the URL', async () => {
+    const a = fakeApi({ provider: 'google', sub: 's1', email: 'v@x.io', name: 'Vee', verified: true });
+    const r = await callback(a, 'google', { qs: '?code=c&state=' + state });
+    assert.equal(r.status, 302);
+    const loc = r.headers.get('location');
+    assert.match(loc, /authed=1&mode=oauth$/);
+    const handoff = liveCookie(r, 'cohive_handoff');
+    assert.match(handoff, /HttpOnly/);
+    assert.match(handoff, /Path=\/api\/auth\/oauth\/complete;/);
+    assert.match(handoff, /Max-Age=120;/);
+    assert.ok(liveCookie(r, 'cohive_session'));
+    assert.ok(cleared(r, 'cohive_oauth_state'), 'state cookie is spent');
+    const token = handoff.match(/=([a-f0-9]{48});/)[1];
+    assert.equal(loc.includes(token), false);
+    const done = await a.handle(new Request('http://test/api/auth/oauth/complete', { method: 'POST', headers: { Cookie: 'cohive_handoff=' + token } }));
+    const data = await done.json();
+    assert.equal(done.status, 200);
+    assert.equal(data.token, token);
+    assert.equal(data.user.name, 'Vee');
+    assert.ok(cleared(done, 'cohive_handoff'));
+    assert.equal((await a.handle(new Request('http://test/api/auth/oauth/complete', { method: 'POST' }))).status, 401);
+    assert.equal(a.store.listTripsForUser(data.user.id).length, 1, 'starts with its own trip');
+    assert.equal(a.store.getTrip('1', data.user.id).status, 403, 'never the shared seed hive');
+  });
+
+  await aok('Apple form_post callback: cross-site POST carries state + code; first-login name kept; sub reopens the account', async () => {
+    const a = fakeApi({ provider: 'apple', sub: '001.zz', email: '', name: '', verified: true });
+    const post = (fields) => callback(a, 'apple', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(fields).toString() });
+    const r = await post({ state, code: 'c', user: JSON.stringify({ name: { firstName: 'Maya', lastName: 'Chen' } }) });
+    assert.match(r.headers.get('location'), /authed=1&mode=oauth$/);
+    const u = a.store.getSessionUser(liveCookie(r, 'cohive_handoff').match(/=([a-f0-9]{48});/)[1]);
+    assert.equal(u.name, 'Maya Chen');
+    assert.equal(u.providerSub, '001.zz');
+    assert.match(u.email, /^apple-[a-f0-9]{16}@cohive\.local$/);
+    const r2 = await post({ state, code: 'c2' });
+    assert.equal(a.store.getSessionUser(liveCookie(r2, 'cohive_handoff').match(/=([a-f0-9]{48});/)[1]).id, u.id);
+  });
+
+  await aok('a verified proof claims an email that was only registered or demo-squatted: the squatter is evicted', async () => {
+    const s2 = createStore(seed);
+    const squat = s2.register({ email: 'victim@gmail.com', name: 'Squatter', password: 'password1' });
+    const claimed = s2.oauthUpsert({ provider: 'google', sub: 'g-victim', email: 'victim@gmail.com', name: 'Victim', verified: true });
+    assert.equal(claimed.user.id, squat.user.id);
+    assert.equal(s2.getSessionUser(squat.token), null, 'squatter session revoked');
+    assert.equal(s2.login({ email: 'victim@gmail.com', password: 'password1' }).error, 'invalid_credentials', 'provisional password retired');
+    assert.ok(s2.getSessionUser(claimed.token));
+    s2.oauthUpsert({ provider: 'google', sub: 'g-victim', email: 'victim@gmail.com', verified: true });
+    assert.ok(s2.getSessionUser(claimed.token), 'proven accounts keep their sessions on re-login');
+    const demo = s2.demoAuth({ provider: 'email', name: 'Squat2', contact: 'v2@x.io' });
+    const viaMagic = s2.consumeMagicLink(s2.requestMagicLink({ email: 'v2@x.io' }).token);
+    assert.equal(viaMagic.user.id, demo.user.id);
+    assert.equal(s2.getSessionUser(demo.token), null, 'magic link claims the same way');
+    assert.equal(s2.oauthUpsert({ provider: 'google', sub: 'x', email: 'a@b.co', verified: false }).error, 'unverified_identity');
+  });
+
+  await aok('demo sign-in re-enters only demo accounts; a provider sub survives an email change', async () => {
+    const s2 = createStore(seed);
+    s2.register({ email: 'reg@x.io', name: 'R', password: 'password1' });
+    assert.equal(s2.demoAuth({ provider: 'email', name: 'A', contact: 'reg@x.io' }).error, 'use_registered_login');
+    s2.oauthUpsert({ provider: 'google', sub: 'g1', email: 'oauth@x.io', verified: true });
+    assert.equal(s2.demoAuth({ provider: 'email', name: 'A', contact: 'oauth@x.io' }).error, 'use_registered_login');
+    const d1 = s2.demoAuth({ provider: 'email', name: 'D', contact: 'demo@x.io' });
+    assert.equal(s2.demoAuth({ provider: 'email', name: 'D', contact: 'demo@x.io' }).user.id, d1.user.id);
+    const first = s2.oauthUpsert({ provider: 'google', sub: 'g-stable', email: 'old@x.io', verified: true });
+    assert.equal(s2.oauthUpsert({ provider: 'google', sub: 'g-stable', email: 'new@x.io', verified: true }).user.id, first.user.id);
+  });
+
+  await aok('demo sign-in is refused in production unless COHIVE_ALLOW_DEMO=1', async () => {
+    process.env.NODE_ENV = 'production';
+    try {
+      const r = await req('POST', '/api/auth/demo', { provider: 'apple', name: 'P' });
+      assert.equal(r.status, 403);
+      assert.equal(r.data.error, 'demo_disabled');
+      assert.equal((await req('GET', '/api/auth/oauth/google')).data.demo, false);
+      process.env.COHIVE_ALLOW_DEMO = '1';
+      assert.equal((await req('POST', '/api/auth/demo', { provider: 'apple', name: 'P' })).status, 201);
+    } finally {
+      delete process.env.NODE_ENV;
+      delete process.env.COHIVE_ALLOW_DEMO;
+    }
+  });
+}
+
 await aok('outsider cannot read trip', async () => {
   const b = await req('POST', '/api/auth/register', {
     email: 'outsider@cohive.test',
