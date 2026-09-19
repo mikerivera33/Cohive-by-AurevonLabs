@@ -255,12 +255,13 @@ export function createStore(seed = null, options = {}) {
   /**
    * First proof of email ownership (magic link or a verified provider) claims an
    * account that was only ever registered or demo-squatted: whoever held it
-   * unproven loses every session and the provisional password.
+   * unproven loses every session, the provisional password, and any profile
+   * fields they could have planted (payout handle, referral attribution).
    */
   function claimUnverified(user) {
     if (user.oauthVerified) return;
     revokeSessions(user.id);
-    Object.assign(user, hashPassword(newToken()), { oauthVerified: true });
+    Object.assign(user, hashPassword(newToken()), { oauthVerified: true, payHandle: null, referredBy: null });
   }
 
   /** A real account starts with its own hive and trip, never the shared demo one. */
