@@ -186,13 +186,15 @@ export async function createPgStore(seed, { url }) {
     return userRow(rows[0]) || null;
   }
 
-  /** First proof of email ownership evicts an unproven (register / demo) holder: sessions gone, password rotated. */
+  /** First proof of email ownership evicts an unproven (register / demo) holder: sessions gone, password rotated, planted payHandle/referredBy cleared. */
   async function claimUnverified(c, user) {
     if (user.oauthVerified) return;
     const pw = hashPassword(newToken());
     await c.query('DELETE FROM sessions WHERE user_id = $1', [user.id]);
-    await c.query('UPDATE users SET salt = $2, hash = $3, oauth_verified = true WHERE id = $1', [user.id, pw.salt, pw.hash]);
+    await c.query('UPDATE users SET salt = $2, hash = $3, oauth_verified = true, pay_handle = NULL, referred_by = NULL WHERE id = $1', [user.id, pw.salt, pw.hash]);
     user.oauthVerified = true;
+    user.payHandle = null;
+    user.referredBy = null;
   }
 
   /** A real account starts with its own hive and trip, never the shared demo one. */

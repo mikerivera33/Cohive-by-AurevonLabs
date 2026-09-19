@@ -278,6 +278,30 @@ console.log('\nidentity hardening');
     assert.equal(s2.oauthUpsert({ provider: 'google', sub: 'x', email: 'a@b.co', verified: false }).error, 'unverified_identity');
   });
 
+  await aok('claiming a squat wipes the unproven payout handle and referral, not a later proven handle', async () => {
+    const s2 = createStore(seed);
+    const attacker = s2.register({ email: 'attacker@x.io', name: 'Attacker', password: 'password1' });
+    s2.applyEntitlement({ userId: attacker.user.id, tier: 'Platinum', source: 'demo', eventId: 'evt_squat_ref' });
+    const code = s2.meProfile(s2.getSessionUser(attacker.token)).referralCode;
+    assert.match(code, /10$/);
+    const squat = s2.register({ email: 'victim2@gmail.com', name: 'Squatter', password: 'password1', ref: code });
+    assert.equal(s2.meProfile(s2.getSessionUser(squat.token)).referredBy, attacker.user.id);
+    s2.updateProfile(squat.user.id, { payHandle: 'venmo:@attacker' });
+    const claimed = s2.oauthUpsert({ provider: 'google', sub: 'g-victim2', email: 'victim2@gmail.com', name: 'Victim', verified: true });
+    const afterClaim = s2.meProfile(s2.getSessionUser(claimed.token));
+    assert.equal(afterClaim.payHandle, null, 'squatter Venmo must not survive the claim');
+    assert.equal(afterClaim.referredBy, null, 'squatter referral must not survive the claim');
+    s2.updateProfile(claimed.user.id, { payHandle: 'venmo:@victim' });
+    s2.oauthUpsert({ provider: 'google', sub: 'g-victim2', email: 'victim2@gmail.com', verified: true });
+    assert.equal(s2.meProfile(s2.getSessionUser(claimed.token)).payHandle, 'venmo:@victim', 'a proven handle survives re-login');
+    const demo = s2.demoAuth({ provider: 'email', name: 'Squat3', contact: 'v3@x.io', ref: code });
+    s2.updateProfile(demo.user.id, { payHandle: 'cashapp:$attacker' });
+    const viaMagic = s2.consumeMagicLink(s2.requestMagicLink({ email: 'v3@x.io' }).token);
+    const afterMagic = s2.meProfile(s2.getSessionUser(viaMagic.token));
+    assert.equal(afterMagic.payHandle, null, 'demo squat handle cleared on magic claim');
+    assert.equal(afterMagic.referredBy, null, 'demo squat referral cleared on magic claim');
+  });
+
   await aok('demo sign-in re-enters only demo accounts; a provider sub survives an email change', async () => {
     const s2 = createStore(seed);
     s2.register({ email: 'reg@x.io', name: 'R', password: 'password1' });

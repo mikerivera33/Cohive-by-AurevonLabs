@@ -143,6 +143,19 @@ await aok('identity hardening on Postgres: a verified claim evicts a squatter, s
   assert.equal((await call('GET', '/api/trips/1', undefined, fresh.token)).status, 403, 'never the shared seed hive');
 });
 
+await aok('identity hardening on Postgres: claim wipes a squatters payHandle and referredBy', async () => {
+  const attacker = await call('POST', '/api/auth/register', { email: 'thief@example.com', name: 'Thief', password: 'correct horse' });
+  await store.applyEntitlement({ userId: attacker.data.user.id, tier: 'Platinum', source: 'demo', eventId: 'evt_pg_squat_ref' });
+  const code = (await call('GET', '/api/auth/me', undefined, attacker.data.token)).data.referralCode;
+  const squat = await call('POST', '/api/auth/register', { email: 'mark@example.com', name: 'Squatter', password: 'correct horse', ref: code });
+  assert.equal((await call('GET', '/api/auth/me', undefined, squat.data.token)).data.referredBy, attacker.data.user.id);
+  await call('POST', '/api/auth/me/profile', { payHandle: 'venmo:@thief' }, squat.data.token);
+  const claimed = await store.oauthUpsert({ provider: 'google', sub: 'g-mark', email: 'mark@example.com', name: 'Mark', verified: true });
+  const after = await store.meProfile(claimed.user);
+  assert.equal(after.payHandle, null, 'squatter Venmo must not survive the claim');
+  assert.equal(after.referredBy, null, 'squatter referral must not survive the claim');
+});
+
 let inviteCode;
 let placeholder;
 await aok('invite: adding a member mints a single-use invite link', async () => {
